@@ -1,0 +1,179 @@
+package org.fixtrading.silverflash.fixp.flow;
+
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.PEER_HEARTBEAT;
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.PEER_TERMINATED;
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.ToSessionEventType.APPLICATION_MESSAGE_TO_SEND;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.fixtrading.silverflash.MessageConsumer;
+import org.fixtrading.silverflash.Receiver;
+import org.fixtrading.silverflash.Sequenced;
+import org.fixtrading.silverflash.Session;
+import org.fixtrading.silverflash.fixp.SessionEventTopics;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.fixp.messages.MessageType;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder.ContextDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder.SequenceDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageEncoder.NotAppliedEncoder;
+import org.fixtrading.silverflash.reactor.EventReactor;
+import org.fixtrading.silverflash.reactor.Subscription;
+import org.fixtrading.silverflash.reactor.TimerSchedule;
+import org.fixtrading.silverflash.reactor.Topic;
+
+/**
+ * Receives an idempotent message flow
+ * 
+ * @author Don Mendelson
+ *
+ */
+public class IdempotentFlowReceiver implements FlowReceiver, Sequenced {
+
+  private final Receiver heartbeatEvent = buffer -> {
+    if (isHeartbeatDue()) {
+      // **** terminated(null);
+    }
+  };
+
+  private final TimerSchedule heartbeatSchedule;
+  private final Subscription heartbeatSubscription;
+  private boolean isEndOfStream = false;
+  private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
+  private final MessageDecoder messageDecoder = new MessageDecoder();
+  private final MessageEncoder messageEncoder = new MessageEncoder();
+  private final AtomicLong nextSeqNoAccepted = new AtomicLong(1);
+  private final AtomicLong nextSeqNoReceived = new AtomicLong(1);
+  private final ByteBuffer notAppliedBuffer = ByteBuffer.allocateDirect(46).order(
+      ByteOrder.nativeOrder());
+  private final NotAppliedEncoder notAppliedEncoder;
+  private final EventReactor<ByteBuffer> reactor;
+  private final Session<UUID> session;
+  private final UUID sessionId;
+  private final MessageConsumer<UUID> streamReceiver;
+  private final Topic terminatedTopic;
+  private final Topic toSendTopic;
+
+  /**
+   * Constructor
+   * 
+   * @param reactor an EventReactor
+   * @param session a session using this flow
+   * @param streamReceiver a consumer of application messages
+   * @param inboundKeepaliveInterval expected heartbeat interval
+   */
+  public IdempotentFlowReceiver(EventReactor<ByteBuffer> reactor, Session<UUID> session,
+      MessageConsumer<UUID> streamReceiver, int inboundKeepaliveInterval) {
+    Objects.requireNonNull(session);
+    Objects.requireNonNull(streamReceiver);
+    this.session = session;
+    this.sessionId = session.getSessionId();
+    this.reactor = reactor;
+    this.streamReceiver = streamReceiver;
+    notAppliedEncoder =
+        (NotAppliedEncoder) messageEncoder.attachForEncode(notAppliedBuffer, 0,
+            MessageType.NOT_APPLIED);
+    notAppliedBuffer.limit(MessageHeaderWithFrame.getLength() + notAppliedEncoder.getBlockLength());
+    toSendTopic = SessionEventTopics.getTopic(sessionId, APPLICATION_MESSAGE_TO_SEND);
+    terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
+
+    final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, PEER_HEARTBEAT);
+    heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
+    heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, inboundKeepaliveInterval);
+  }
+
+  public void accept(ByteBuffer buffer) {
+    Optional<Decoder> optDecoder = messageDecoder.attachForDecode(buffer, buffer.position());
+
+    boolean isApplicationMessage = true;
+    if (optDecoder.isPresent()) {
+      final Decoder decoder = optDecoder.get();
+      switch (decoder.getMessageType()) {
+        case SEQUENCE:
+          accept((SequenceDecoder) decoder);
+          isApplicationMessage = false;
+          break;
+        case CONTEXT:
+          accept((ContextDecoder) decoder);
+          isApplicationMessage = false;
+          break;
+        case NOT_APPLIED:
+          // System.out.println("NotApplied received");
+          break;
+        case TERMINATE:
+          terminated(buffer);
+          isApplicationMessage = false;
+          break;
+        default:
+          System.err.println("Protocol violation");
+      }
+    }
+    if (isApplicationMessage && !isEndOfStream) {
+      // if not a known message type, assume it's an application message
+      final long seqNo = nextSeqNoReceived.getAndIncrement();
+      if (nextSeqNoAccepted.compareAndSet(seqNo, seqNo)) {
+        nextSeqNoAccepted.incrementAndGet();
+        streamReceiver.accept(buffer, session, seqNo);
+      }
+    }
+  }
+
+  public long getNextSeqNo() {
+    return nextSeqNoReceived.get();
+  }
+
+  @Override
+  public boolean isHeartbeatDue() {
+    return isHeartbeatDue.getAndSet(true);
+  }
+
+  void accept(ContextDecoder contextDecoder) {
+    final long newNextSeqNo = contextDecoder.getNextSeqNo();
+    handleSequence(newNextSeqNo);
+  }
+
+  void accept(SequenceDecoder sequenceDecoder) {
+    final long newNextSeqNo = sequenceDecoder.getNextSeqNo();
+    handleSequence(newNextSeqNo);
+  }
+
+  void notifyGap(long fromSeqNo, int count) {
+    // System.out.println("Gap detected");
+    notAppliedEncoder.setFromSeqNo(fromSeqNo);
+    notAppliedEncoder.setCount(count);
+    // Post this to reactor for async sending as an application message
+    reactor.post(toSendTopic, notAppliedBuffer.duplicate());
+  }
+
+  private void handleSequence(final long newNextSeqNo) {
+    isHeartbeatDue.set(false);
+    final long prevNextSeqNo = nextSeqNoReceived.getAndSet(newNextSeqNo);
+    // todo: protocol violation if less than previous seq?
+    final long accepted = nextSeqNoAccepted.get();
+    // System.out.format("Seq no: %d; prev nextSeqNo %d; accepted %d\n",
+    // newNextSeqNo, prevNextSeqNo, accepted);
+    if (newNextSeqNo > accepted) {
+      if (newNextSeqNo > accepted) {
+        notifyGap(prevNextSeqNo, (int) (newNextSeqNo - prevNextSeqNo));
+      }
+      // Continue to accept messages after the gap as if the missing
+      // messages were received
+      nextSeqNoAccepted.set(newNextSeqNo);
+    }
+  }
+
+  private void terminated(ByteBuffer buffer) {
+    isEndOfStream = true;
+    reactor.post(terminatedTopic, buffer);
+    heartbeatSchedule.cancel();
+    heartbeatSubscription.unsubscribe();
+  }
+}

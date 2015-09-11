@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>org.fixtrading.silverflash</groupId>
+	<artifactId>silverflash-parent</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<packaging>pom</packaging>
+	<name>silverflash-parent</name>
+	<description>Parent project for FIXP session protocol implementation</description>
+	<organization>
+		<name>FIX Trading Community</name>
+		<url>http://http://www.fixtradingcommunity.org/</url>
+	</organization>
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<junit.version>4.11</junit.version>
+		<java.version>1.8</java.version>
+		<cucumber.version>1.2.4</cucumber.version>
+		<jna.version>4.1.0</jna.version>
+		<cli.version>1.3.1</cli.version>
+		<disruptor.version>3.3.2</disruptor.version>
+		<sbe.version>1.1.1-RC2</sbe.version>
+		<hdrhistogram.version>2.1.4</hdrhistogram.version>
+	</properties>
+	<dependencies>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<scope>test</scope>
+			<version>${junit.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.mockito</groupId>
+			<artifactId>mockito-core</artifactId>
+			<version>1.10.19</version>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+	
+	<build>
+		<pluginManagement>
+			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-compiler-plugin</artifactId>
+					<version>3.2</version>
+					<configuration>
+						<source>${java.version}</source>
+						<target>${java.version}</target>
+						<!-- Allows use of restricted classes -->
+						<fork>true</fork>
+						<compilerArgument>-XDignore.symbol.file</compilerArgument>
+					</configuration>
+				</plugin>
+			</plugins>
+		</pluginManagement>
+	</build>
+	
+	<modules>
+		<module>silverflash-core</module>
+		<module>benchmark</module>
+		<module>behavior</module>
+		<module>perftest</module>
+		<module>cassandra-store</module>
+		<module>oob-authenticator</module>
+	</modules>
+</project>

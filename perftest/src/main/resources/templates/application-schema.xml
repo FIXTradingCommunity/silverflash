@@ -1,0 +1,163 @@
+<?xml version="1.0"?>
+<!--FIX Simple Binary Encoding message template -->
+<sbe:messageSchema xmlns:sbe="http://www.fixprotocol.org/ns/simple/1.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.fixprotocol.org/ns/simple/1.0/SimpleBinary1-0 SimpleBinary1-0.xsd"
+	package="messages" id="2" version="2" semanticVersion="FIX.5.0_SP2" description="Test dictionary"
+	byteOrder="littleEndian">
+
+	<types>
+		<!-- Simple field types -->
+		<type name="uInt8" primitiveType="uint8" semanticType="int" />
+		<type name="uInt32" primitiveType="uint32" semanticType="int" />
+		<type name="uInt64" primitiveType="uint64" semanticType="int" />
+		<type name="charEnum" primitiveType="char" semanticType="char" />
+		<type name="intEnum" primitiveType="uint8" semanticType="int" />
+		<type name="string4" primitiveType="char" semanticType="String"
+			length="4" />
+		<type name="string8" primitiveType="char" semanticType="String"
+			length="8" />
+		<type name="string14" primitiveType="char" semanticType="String"
+			length="14" />
+		<type name="timestamp" primitiveType="uint64" semanticType="UTCTimestamp" />
+
+		<!-- Constants -->
+		<type name="GeneralIdentifier" primitiveType="char" semanticType="char"
+			description="Identifies class or source of the PartyID" presence="constant">C
+		</type>
+
+		<!-- Composite types -->
+		<composite name="decimal32" semanticType="Price">
+			<type name="mantissa" primitiveType="int32" />
+			<type name="exponent" primitiveType="int8" presence="constant">-4</type>
+		</composite>
+
+		<composite name="varDataEncoding">
+			<type name="length" primitiveType="uint8" semanticType="Length"
+				maxValue="200" />
+			<type name="varData" primitiveType="char" semanticType="data" />
+		</composite>
+
+		<composite name="groupSizeEncoding" description="Repeating group dimensions">
+			<type name="blockLength" primitiveType="uint16" />
+			<type name="numInGroup" primitiveType="uint8" semanticType="NumInGroup" />
+		</composite>
+
+		<composite name="messageHeader" description="Template ID and length of message root">
+			<type name="blockLength" primitiveType="uint16" />
+			<type name="templateId" primitiveType="uint16" />
+			<type name="schemaId" primitiveType="uint16" />
+			<type name="version" primitiveType="uint16" />
+		</composite>
+
+		<!-- Enumerations -->
+		<enum name="Side" encodingType="charEnum" description="BuySellIndicator">
+			<validValue name="Buy" description="Buy order">1</validValue>
+			<validValue name="Sell" description="Sell order">2</validValue>
+			<validValue name="SellShort"
+				description="sell short, client affirms ability to borrow securities in good deliverable form for delivery within three business days">5</validValue>
+			<validValue name="SellShortExempt"
+				description="sell short exempt, client affirms ability to borrow securities in good deliverable form for delivery within three business days">4</validValue>
+		</enum>
+
+		<enum name="Display" encodingType="uint8">
+			<validValue name="AttributablePrice" description="Attributable-Price to Display">1</validValue>
+			<validValue name="AnonymousPrice" description="Anonymous-Price to Comply">2</validValue>
+			<validValue name="NonDisplay" description="Non-Display">3</validValue>
+			<validValue name="PostOnly" description="Post-Only">4</validValue>
+		</enum>
+
+		<enum name="OrderCapacity" encodingType="charEnum" description="Capacity">
+			<validValue name="Agency" description="Agency">1</validValue>
+			<validValue name="Principal" description="Principal">2</validValue>
+			<validValue name="Riskless" description="Riskless">3</validValue>
+		</enum>
+
+		<enum name="IntermarketSweepEligibility" encodingType="intEnum">
+			<validValue name="Eligible" description="Eligible">1</validValue>
+			<validValue name="NotEligible" description="NotEligible">2</validValue>
+		</enum>
+
+		<enum name="CrossType" encodingType="charEnum">
+			<validValue name="NoCross" description="No cross (continuous market)">1</validValue>
+			<validValue name="OpeningCross" description="Opening cross">2</validValue>
+			<validValue name="ClosingCross" description="Closing cross">3</validValue>
+			<validValue name="Halt"
+				description="Halt/IPO cross (Must be market price, refer to Prices in Data Types)">4</validValue>
+			<validValue name="SupplementalOrder" description="Supplemental Order">5</validValue>
+		</enum>
+
+		<enum name="CustomerType" encodingType="charEnum">
+			<validValue name="Retail" description="Retail designated order">R</validValue>
+			<validValue name="NotRetail" description="Not a retail designated order">N</validValue>
+		</enum>
+
+		<enum name="OrdStatus" encodingType="charEnum">
+			<validValue name="New">0</validValue>
+			<validValue name="PartiallyFilled">1</validValue>
+			<validValue name="Filled">2</validValue>
+			<validValue name="DoneForDay">3</validValue>
+			<validValue name="Canceled">4</validValue>
+		</enum>
+
+		<enum name="BBOWeight" encodingType="charEnum">
+			<validValue name="Level0">0</validValue>
+			<validValue name="Level1">1</validValue>
+			<validValue name="Level2">2</validValue>
+			<validValue name="Level3">3</validValue>
+		</enum>
+
+	</types>
+
+	<sbe:message name="EnterOrder" id="1" semanticType="O">
+		<field type="string14" name="ClOrdId" id="11"
+			description="OrderToken: Token must be day unique" />
+		<field type="Side" name="Side" id="54" description="BuySellIndicator" />
+		<field type="uInt32" name="OrderQty" id="38"
+			description="Shares: Total number of shares" />
+		<field type="string8" name="Symbol" id="55" description="Stock: Stock Symbol" />
+		<field type="decimal32" name="Price" id="44" description="The price of the order" />
+		<field type="uInt32" name="ExpireTime" id="126"
+			description="TimeInForce: The number of seconds that this order should live before being automatically canceled." />
+		<field type="string4" name="ClientID" id="109"
+			description="Firm Identifier for the order entry firm" />
+		<field type="Display" name="Display" id="5009" />
+		<field type="OrderCapacity" name="OrderCapacity" id="528"
+			description="Capacity" />
+		<field type="IntermarketSweepEligibility" name="IntermarketSweepEligibility"
+			id="5011" />
+		<field type="uInt32" name="MinimumQuantity" id="12"
+			description="Specifies the minimum acceptable quantity to execute" />
+		<field type="CrossType" name="CrossType" id="549" />
+		<field type="CustomerType" name="CustomerType" id="5010" />
+		<field type="timestamp" name="TransactTime" id="60" description="Timestamp" />
+	</sbe:message>
+
+	<sbe:message name="Accepted" id="2" semanticType="A">
+		<field type="timestamp" name="TransactTime" id="60" description="Timestamp" />
+		<field type="string14" name="ClOrdId" id="11"
+			description="OrderToken: Token must be day unique" />
+		<field type="Side" name="Side" id="54" description="BuySellIndicator" />
+		<field type="uInt32" name="OrderQty" id="38"
+			description="Shares: Total number of shares accepted" />
+		<field type="string8" name="Symbol" id="55" description="Stock: Stock Symbol" />
+		<field type="decimal32" name="Price" id="44" description="The price of the order" />
+		<field type="uInt32" name="ExpireTime" id="126"
+			description="TimeInForce: The number of seconds that this order should live before being automatically canceled." />
+		<field type="string4" name="ClientID" id="109"
+			description="The accepted firm for the order." />
+		<field type="Display" name="Display" id="5009" />
+		<field type="uInt64" name="OrderId" id="37" description="Order Reference Number" />
+		<field type="OrderCapacity" name="OrderCapacity" id="528"
+			description="Capacity" />
+		<field type="IntermarketSweepEligibility" name="IntermarketSweepEligibility"
+			id="5011" />
+		<field type="uInt32" name="MinimumQuantity" id="12"
+			description="Specifies the minimum acceptable quantity to execute" />
+		<field type="CrossType" name="CrossType" id="549" />
+		<field type="OrdStatus" name="OrdStatus" id="39" />
+		<field type="BBOWeight" name="BBOWeightIndicator" id="5012" />
+		<field type="timestamp" name="OrderEntryTime" id="5013" description="Timestamp" />
+	</sbe:message>
+
+</sbe:messageSchema>

@@ -1,0 +1,217 @@
+package org.fixtrading.silverflash.fixp.flow;
+
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.FromSessionEventType.*;
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.ServiceEventType.*;
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.*;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.Arrays;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.fixtrading.silverflash.MessageConsumer;
+import org.fixtrading.silverflash.Receiver;
+import org.fixtrading.silverflash.Sequenced;
+import org.fixtrading.silverflash.Session;
+import org.fixtrading.silverflash.fixp.SessionEventTopics;
+import org.fixtrading.silverflash.fixp.SessionId;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.fixp.messages.MessageType;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder.RetransmissionDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder.SequenceDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageEncoder.RetransmissionRequestEncoder;
+import org.fixtrading.silverflash.reactor.EventReactor;
+import org.fixtrading.silverflash.reactor.Subscription;
+import org.fixtrading.silverflash.reactor.TimerSchedule;
+import org.fixtrading.silverflash.reactor.Topic;
+
+/**
+ * Receives a recoverable message flow
+ * 
+ * @author Don Mendelson
+ *
+ */
+public class RecoverableFlowReceiver implements Sequenced, FlowReceiver {
+
+  private final Topic finishedTopic;
+
+  private final Receiver heartbeatEvent = t -> {
+    if (isHeartbeatDue()) {
+      terminated(null);
+    }
+  };
+  private final TimerSchedule heartbeatSchedule;
+  private final Subscription heartbeatSubscription;
+  private boolean isEndOfStream = false;
+  private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
+  private final AtomicBoolean isRetransmission = new AtomicBoolean();
+  private long lastRequestTimestamp = 0L;
+  private long lastRetransSeqNoToAccept = 0;
+  private final MessageDecoder messageDecoder = new MessageDecoder();
+  private final MessageEncoder messageEncoder = new MessageEncoder();
+  private final AtomicLong nextRetransSeqNoReceived = new AtomicLong(1);
+  private final AtomicLong nextSeqNoAccepted = new AtomicLong(1);
+  private final AtomicLong nextSeqNoReceived = new AtomicLong(1);
+  private final EventReactor<ByteBuffer> reactor;
+  private final ByteBuffer retransmissionRequestBuffer = ByteBuffer.allocateDirect(46).order(
+      ByteOrder.nativeOrder());
+  private final RetransmissionRequestEncoder retransmissionRequestEncoder;
+  private final byte[] retransSessionId = new byte[16];
+  private final Topic retrieveTopic;
+  private final Session<UUID> session;
+  private final UUID sessionId;
+  private final MessageConsumer<UUID> streamReceiver;
+  private final Topic terminatedTopic;
+  private final byte[] uuidAsBytes;
+
+  /**
+   * Constructor
+   * 
+   * @param reactor an EventReactor
+   * @param session a session using this flow
+   * @param streamReceiver a consumer of application messages
+   * @param inboundKeepaliveInterval expected heartbeat interval
+   */
+  public RecoverableFlowReceiver(EventReactor<ByteBuffer> reactor, Session<UUID> session,
+      MessageConsumer<UUID> streamReceiver, int inboundKeepaliveInterval) {
+    Objects.requireNonNull(session);
+    Objects.requireNonNull(streamReceiver);
+    this.reactor = reactor;
+    this.streamReceiver = streamReceiver;
+    this.session = session;
+    this.sessionId = session.getSessionId();
+    uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
+    retransmissionRequestEncoder =
+        (RetransmissionRequestEncoder) messageEncoder.attachForEncode(retransmissionRequestBuffer,
+            0, MessageType.RETRANSMIT_REQUEST);
+    retransmissionRequestBuffer.limit(MessageHeaderWithFrame.getLength()
+        + retransmissionRequestEncoder.getBlockLength());
+    retrieveTopic = SessionEventTopics.getTopic(SERVICE_STORE_RETREIVE);
+    terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
+    finishedTopic = SessionEventTopics.getTopic(sessionId, SESSION_FINISHED);
+
+    final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, PEER_HEARTBEAT);
+    heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
+    heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, inboundKeepaliveInterval);
+  }
+
+  public void accept(ByteBuffer buffer) {
+    Optional<Decoder> optDecoder = messageDecoder.attachForDecode(buffer, buffer.position());
+    // if not a known message type, assume it's an application
+    // message
+    boolean isApplicationMessage = true;
+    if (optDecoder.isPresent()) {
+      final Decoder decoder = optDecoder.get();
+      switch (decoder.getMessageType()) {
+        case SEQUENCE:
+          accept((SequenceDecoder) decoder);
+          isApplicationMessage = false;
+          break;
+        case RETRANSMISSION:
+          accept((RetransmissionDecoder) decoder);
+          isApplicationMessage = false;
+          break;
+        case FINISHED_SENDING:
+          finished(buffer);
+          isApplicationMessage = false;
+          break;
+        case TERMINATE:
+          terminated(buffer);
+          isApplicationMessage = false;
+          break;
+        default:
+          System.err.println("Protocol violation");
+      }
+    }
+    if (isApplicationMessage && !isEndOfStream) {
+      if (!isRetransmission.get()) {
+        final long seqNo = nextSeqNoReceived.getAndIncrement();
+        if (nextSeqNoAccepted.compareAndSet(seqNo, seqNo)) {
+          nextSeqNoAccepted.incrementAndGet();
+          streamReceiver.accept(buffer, session, seqNo);
+        }
+      } else {
+        final long seqNo = nextRetransSeqNoReceived.getAndIncrement();
+        if (seqNo <= lastRetransSeqNoToAccept) {
+          streamReceiver.accept(buffer, session, seqNo);
+        }
+      }
+    }
+  }
+
+  public long getNextSeqNo() {
+    return nextSeqNoReceived.get();
+  }
+
+  @Override
+  public boolean isHeartbeatDue() {
+    return isHeartbeatDue.getAndSet(true);
+  }
+
+  void accept(RetransmissionDecoder decoder) {
+    decoder.getSessionId(retransSessionId, 0);
+    long retransSeqNo = decoder.getNextSeqNo();
+    long timestamp = decoder.getRequestTimestamp();
+    int count = decoder.getCount();
+
+    if (timestamp == lastRequestTimestamp && Arrays.equals(uuidAsBytes, retransSessionId)) {
+      nextRetransSeqNoReceived.set(retransSeqNo);
+      lastRetransSeqNoToAccept = retransSeqNo + count;
+      isRetransmission.set(true);
+    } else {
+      System.err.println("Protocol violation; unsolicited retransmission");
+    }
+  }
+
+  void accept(SequenceDecoder sequenceDecoder) {
+    isHeartbeatDue.set(false);
+    final long newNextSeqNo = sequenceDecoder.getNextSeqNo();
+    final long prevNextSeqNo = nextSeqNoReceived.getAndSet(newNextSeqNo);
+    // todo: protocol violation if less than previous seq?
+    final long accepted = nextSeqNoAccepted.get();
+    isRetransmission.set(false);
+    // System.out.format("Seq no: %d; prev nextSeqNo %d; accepted %d\n",
+    // newNextSeqNo, prevNextSeqNo, accepted);
+    if (newNextSeqNo > accepted) {
+      if (newNextSeqNo > accepted) {
+        // todo: make only one retrans request at a time - queue them up
+        // or consolidate?
+        notifyGap(prevNextSeqNo, (int) (newNextSeqNo - prevNextSeqNo));
+      }
+      // Continue to accept messages after the gap as if the missing
+      // messages were received
+      nextSeqNoAccepted.set(newNextSeqNo);
+    }
+  }
+
+  void notifyGap(long fromSeqNo, int count) {
+    retransmissionRequestEncoder.setSessionId(uuidAsBytes);
+    lastRequestTimestamp = System.nanoTime();
+    retransmissionRequestEncoder.setTimestamp(lastRequestTimestamp);
+    retransmissionRequestEncoder.setFromSeqNo(fromSeqNo);
+    retransmissionRequestEncoder.setCount(count);
+    // Post this to reactor for async message retrieval and retransmission
+    reactor.post(retrieveTopic, retransmissionRequestBuffer);
+  }
+
+  private void finished(ByteBuffer buffer) {
+    isEndOfStream = true;
+    buffer.rewind();
+    reactor.post(finishedTopic, buffer);
+  }
+
+  private void terminated(ByteBuffer buffer) {
+    isEndOfStream = true;
+    buffer.rewind();
+    reactor.post(terminatedTopic, buffer);
+    heartbeatSchedule.cancel();
+    heartbeatSubscription.unsubscribe();
+  }
+}

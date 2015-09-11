@@ -1,0 +1,132 @@
+package org.fixtrading.silverflash.examples;
+
+import java.nio.ByteBuffer;
+import java.util.UUID;
+import java.util.function.Supplier;
+
+import org.fixtrading.silverflash.MessageConsumer;
+import org.fixtrading.silverflash.fixp.FixpSession;
+import org.fixtrading.silverflash.fixp.Sessions;
+import org.fixtrading.silverflash.fixp.messages.FlowType;
+import org.fixtrading.silverflash.fixp.store.MessageStore;
+import org.fixtrading.silverflash.reactor.EventReactor;
+import org.fixtrading.silverflash.transport.Transport;
+
+/**
+ * Creates new instances of FixpSession
+ * 
+ * @author Don Mendelson
+ *
+ */
+public class FixpSessionFactory extends Sessions {
+
+  private final int outboundKeepaliveInterval;
+  private final EventReactor<ByteBuffer> reactor;
+  private MessageStore store;
+  private final boolean isMultiplexed;
+
+  /**
+   * Construct a factory without a MessageStore. No recovery is supported and not multiplexed.
+   * 
+   * @param reactor event pub/sub
+   * @param outboundKeepaliveInterval heartbeat interval for created sessions
+   */
+  public FixpSessionFactory(EventReactor<ByteBuffer> reactor, int outboundKeepaliveInterval) {
+    this(reactor, outboundKeepaliveInterval, false);
+  }
+
+  /**
+   * Construct a factory without a MessageStore. No recovery is supported.
+   * 
+   * @param reactor event pub/sub
+   * @param outboundKeepaliveInterval heartbeat interval for created sessions
+   * @param isMultiplexed sessions share a transport
+   */
+  public FixpSessionFactory(EventReactor<ByteBuffer> reactor, int outboundKeepaliveInterval,
+      boolean isMultiplexed) {
+    this.reactor = reactor;
+    this.outboundKeepaliveInterval = outboundKeepaliveInterval;
+    this.isMultiplexed = isMultiplexed;
+  }
+
+  /**
+   * Construct a factory without a MessageStore. Recovery is supported.
+   * 
+   * @param reactor event pub/sub
+   * @param outboundKeepaliveInterval heartbeat interval for created sessions
+   * @param store message repository
+   */
+  public FixpSessionFactory(EventReactor<ByteBuffer> reactor, int outboundKeepaliveInterval,
+      boolean isMultiplexed, MessageStore store) {
+    this(reactor, outboundKeepaliveInterval, isMultiplexed);
+    this.store = store;
+  }
+
+  /**
+   * Creates a new client session
+   * 
+   * @param credentials session identification for authentication
+   * @param transport a communication channel to be opened by the session
+   * @param buffers a buffer Supplier for received messages
+   * @param streamReceiver application layer message consumer
+   * @param outboundFlow type of the outbound message flow
+   * @return a new FixpSession
+   */
+  public FixpSession createClientSession(byte[] credentials, Transport transport,
+      Supplier<ByteBuffer> buffers, MessageConsumer<UUID> streamReceiver, FlowType outboundFlow) {
+    FixpSession session;
+    if (outboundFlow == FlowType.RECOVERABLE) {
+      session =
+          FixpSession.builder().withReactor(reactor).withTransport(transport, isMultiplexed)
+              .withBufferSupplier(buffers).withMessageConsumer(streamReceiver)
+              .withOutboundFlow(outboundFlow).withSessionId(UUID.randomUUID())
+              .withClientCredentials(credentials)
+              .withOutboundKeepaliveInterval(outboundKeepaliveInterval).withMessageStore(store)
+              .build();
+    } else {
+      session =
+          FixpSession.builder().withReactor(reactor).withTransport(transport, isMultiplexed)
+              .withBufferSupplier(buffers).withMessageConsumer(streamReceiver)
+              .withOutboundFlow(outboundFlow).withSessionId(UUID.randomUUID())
+              .withClientCredentials(credentials)
+              .withOutboundKeepaliveInterval(outboundKeepaliveInterval).build();
+    }
+
+    addSession(session);
+    return session;
+  }
+
+  /**
+   * Creates a new server session
+   * 
+   * @param transport a communication channel to be opened by the session
+   * @param buffers a buffer Supplier for received messages
+   * @param streamReceiver application layer message consumer
+   * @param outboundFlow type of the outbound message flow
+   * @return a new FixpSession
+   */
+  public FixpSession createServerSession(Transport transport, Supplier<ByteBuffer> buffers,
+      MessageConsumer<UUID> streamReceiver, FlowType outboundFlow) {
+    FixpSession session;
+    if (outboundFlow == FlowType.RECOVERABLE) {
+      session =
+          FixpSession.builder().withReactor(reactor).withTransport(transport, isMultiplexed)
+              .withBufferSupplier(buffers).withMessageConsumer(streamReceiver)
+              .withOutboundFlow(outboundFlow)
+              .withOutboundKeepaliveInterval(outboundKeepaliveInterval).withMessageStore(store)
+              .asServer().build();
+    } else {
+      session =
+          FixpSession.builder().withReactor(reactor).withTransport(transport, isMultiplexed)
+              .withBufferSupplier(buffers).withMessageConsumer(streamReceiver)
+              .withOutboundFlow(outboundFlow)
+              .withOutboundKeepaliveInterval(outboundKeepaliveInterval).asServer().build();
+    }
+
+    // Can't add to session to map yet because don't session ID until
+    // negotiated
+    addNewSession(session);
+    return session;
+  }
+
+}

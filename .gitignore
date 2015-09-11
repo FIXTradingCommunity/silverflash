@@ -1,7 +1,14 @@
-*.class
+**/target/
+**/logs/
 
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
+# IDE files
+**/.classpath
+**/.project
+**/.settings/
+.idea
+*.iml
+*.project
+*.prefs
 
 # Package Files #
 *.jar
