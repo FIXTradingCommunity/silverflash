@@ -63,6 +63,6 @@
 		<module>behavior</module>
 		<module>perftest</module>
 		<module>cassandra-store</module>
-		<module>oob-authenticator</module>
+		
 	</modules>
 </project>

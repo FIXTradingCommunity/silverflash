@@ -1,3 +1,19 @@
+/**
+ *    Copyright 2015 FIX Protocol Ltd
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
 package org.fixtrading.silverflash.fixp.store;
 
 import static org.junit.Assert.*;
@@ -41,9 +57,8 @@ public class CassandraMessageStoreTest {
   @BeforeClass
   public static void setUpOnce() throws Exception {
     final Runtime runtime = Runtime.getRuntime();
-    final String path = "C:/users/E16244/Documents/git/apache-cassandra-2.0.13/bin/";
-    final String command = path + "cassandra.bat";
-    // final String command = "cassandra";
+    // Assumes that Cassandra executable in on the path
+    final String command = "cassandra";
     process = runtime.exec(command);
     System.out.println(process.isAlive() ? "Cassandra is alive" : "Cassandra not started");
     Thread.sleep(30 * 1000);
