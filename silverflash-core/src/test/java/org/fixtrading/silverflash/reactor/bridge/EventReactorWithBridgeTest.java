@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.reactor.bridge;
 
 import static org.junit.Assert.assertEquals;

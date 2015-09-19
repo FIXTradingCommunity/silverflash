@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.examples;
 
 import java.io.FileReader;
@@ -105,7 +106,7 @@ public class BuySide implements Runnable {
      * Attempts to establish a session, and when done successfully, performs injection on its own
      * thread.
      * 
-     * @return
+     * @return a future to handle session termination asynchronously
      * @throws Exception
      */
     public SessionTerminatedFuture connect() {

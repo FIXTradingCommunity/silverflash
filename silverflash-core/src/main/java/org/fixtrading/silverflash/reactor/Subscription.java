@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.reactor;
 
 /**
@@ -38,18 +39,23 @@ public class Subscription {
 
   @Override
   public boolean equals(Object obj) {
-    if (this == obj)
+    if (this == obj) {
       return true;
-    if (obj == null)
+    }
+    if (obj == null) {
       return false;
-    if (getClass() != obj.getClass())
+    }
+    if (getClass() != obj.getClass()) {
       return false;
+    }
     Subscription other = (Subscription) obj;
     if (topic == null) {
-      if (other.topic != null)
+      if (other.topic != null) {
         return false;
-    } else if (!topic.equals(other.topic))
+      }
+    } else if (!topic.equals(other.topic)) {
       return false;
+    }
     return true;
   }
 

@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.fixp;
 
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.FromSessionEventType.SESSION_READY;

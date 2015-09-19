@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.fixp.flow;
 
 import org.fixtrading.silverflash.Sequenced;

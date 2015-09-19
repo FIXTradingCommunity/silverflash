@@ -1,19 +1,18 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ * Copyright 2015 FIX Protocol Ltd
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations under
+ * the License.
  *
  */
+
 package org.fixtrading.silverflash.fixp.store;
 
 import java.nio.ByteBuffer;
@@ -25,10 +24,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
-
-import org.fixtrading.silverflash.fixp.store.MessageStore;
-import org.fixtrading.silverflash.fixp.store.MessageStoreResult;
-import org.fixtrading.silverflash.fixp.store.StoreException;
 
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.Cluster;
@@ -117,8 +112,8 @@ public class CassandraMessageStore implements MessageStore {
   // hosts ip to connect to
   private final String contactPoints;
 
-  private int nThreads = 1;
-  private final Executor executor = Executors.newFixedThreadPool(nThreads);
+  private int numberOfThreads = 1;
+  private final Executor executor = Executors.newFixedThreadPool(numberOfThreads);
   /*
    * Sets number of simultaneous requests on all connections to an host after which more connections
    * are created(between 0 and 128).
@@ -154,11 +149,10 @@ public class CassandraMessageStore implements MessageStore {
           + " WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }"));
       System.out.format("Keyspace %s available\n", KEYSPACE_NAME);
 
-      Create create =
-          SchemaBuilder.createTable(KEYSPACE_NAME, TABLE_NAME).ifNotExists()
-              .addPartitionKey(SESSION_ID_COLNAME, DataType.uuid())
-              .addClusteringColumn(SEQ_NO_COLNAME, DataType.bigint())
-              .addColumn(MESSAGE_COLNAME, DataType.blob());
+      Create create = SchemaBuilder.createTable(KEYSPACE_NAME, TABLE_NAME).ifNotExists()
+          .addPartitionKey(SESSION_ID_COLNAME, DataType.uuid())
+          .addClusteringColumn(SEQ_NO_COLNAME, DataType.bigint())
+          .addColumn(MESSAGE_COLNAME, DataType.blob());
 
       ResultSet resultSet = session.execute(create);
       System.out.format("Table %s available\n", TABLE_NAME);
@@ -216,7 +210,7 @@ public class CassandraMessageStore implements MessageStore {
         // maxConnections);
 
         cluster = new Cluster.Builder().addContactPoints(contactPoints)
-        // .withPoolingOptions(pools)
+            // .withPoolingOptions(pools)
             .withSocketOptions(new SocketOptions().setTcpNoDelay(true)).build();
 
         cluster.getConfiguration().getProtocolOptions()
@@ -316,17 +310,15 @@ public class CassandraMessageStore implements MessageStore {
   }
 
   private BoundStatement prepareSelectMaxStatement() {
-    PreparedStatement statement =
-        session.prepare("SELECT " + SEQ_NO_COLNAME + " FROM " + TABLE_NAME + " WHERE "
-            + SESSION_ID_COLNAME + "= ?" + " ORDER BY " + SEQ_NO_COLNAME + " DESC LIMIT 1");
+    PreparedStatement statement = session.prepare("SELECT " + SEQ_NO_COLNAME + " FROM " + TABLE_NAME
+        + " WHERE " + SESSION_ID_COLNAME + "= ?" + " ORDER BY " + SEQ_NO_COLNAME + " DESC LIMIT 1");
     return new BoundStatement(statement);
   }
 
   private BoundStatement prepareSelectStatement() {
-    PreparedStatement statement =
-        session.prepare("SELECT " + MESSAGE_COLNAME + " FROM " + TABLE_NAME + " WHERE "
-            + SESSION_ID_COLNAME + "= ? AND " + SEQ_NO_COLNAME + " >= ? AND " + SEQ_NO_COLNAME
-            + " <= ?");
+    PreparedStatement statement = session.prepare(
+        "SELECT " + MESSAGE_COLNAME + " FROM " + TABLE_NAME + " WHERE " + SESSION_ID_COLNAME
+            + "= ? AND " + SEQ_NO_COLNAME + " >= ? AND " + SEQ_NO_COLNAME + " <= ?");
     return new BoundStatement(statement);
   }
 

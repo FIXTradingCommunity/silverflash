@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.fixp.store;
 
 import java.nio.ByteBuffer;
@@ -61,8 +62,9 @@ public class MessageStoreResult {
       this.countRequested = countRequested;
       clearException();
       return true;
-    } else
+    } else {
       return false;
+    }
   }
 
   /**

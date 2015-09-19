@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.fixp.flow;
 
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.PEER_HEARTBEAT;
@@ -68,8 +69,8 @@ public class IdempotentFlowReceiver implements FlowReceiver, Sequenced {
   private final MessageEncoder messageEncoder = new MessageEncoder();
   private final AtomicLong nextSeqNoAccepted = new AtomicLong(1);
   private final AtomicLong nextSeqNoReceived = new AtomicLong(1);
-  private final ByteBuffer notAppliedBuffer = ByteBuffer.allocateDirect(46).order(
-      ByteOrder.nativeOrder());
+  private final ByteBuffer notAppliedBuffer = ByteBuffer.allocateDirect(46)
+      .order(ByteOrder.nativeOrder());
   private final NotAppliedEncoder notAppliedEncoder;
   private final EventReactor<ByteBuffer> reactor;
   private final Session<UUID> session;
@@ -81,10 +82,14 @@ public class IdempotentFlowReceiver implements FlowReceiver, Sequenced {
   /**
    * Constructor
    * 
-   * @param reactor an EventReactor
-   * @param session a session using this flow
-   * @param streamReceiver a consumer of application messages
-   * @param inboundKeepaliveInterval expected heartbeat interval
+   * @param reactor
+   *          an EventReactor
+   * @param session
+   *          a session using this flow
+   * @param streamReceiver
+   *          a consumer of application messages
+   * @param inboundKeepaliveInterval
+   *          expected heartbeat interval
    */
   public IdempotentFlowReceiver(EventReactor<ByteBuffer> reactor, Session<UUID> session,
       MessageConsumer<UUID> streamReceiver, int inboundKeepaliveInterval) {
@@ -94,9 +99,8 @@ public class IdempotentFlowReceiver implements FlowReceiver, Sequenced {
     this.sessionId = session.getSessionId();
     this.reactor = reactor;
     this.streamReceiver = streamReceiver;
-    notAppliedEncoder =
-        (NotAppliedEncoder) messageEncoder.attachForEncode(notAppliedBuffer, 0,
-            MessageType.NOT_APPLIED);
+    notAppliedEncoder = (NotAppliedEncoder) messageEncoder.attachForEncode(notAppliedBuffer, 0,
+        MessageType.NOT_APPLIED);
     notAppliedBuffer.limit(MessageHeaderWithFrame.getLength() + notAppliedEncoder.getBlockLength());
     toSendTopic = SessionEventTopics.getTopic(sessionId, APPLICATION_MESSAGE_TO_SEND);
     terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
@@ -113,23 +117,23 @@ public class IdempotentFlowReceiver implements FlowReceiver, Sequenced {
     if (optDecoder.isPresent()) {
       final Decoder decoder = optDecoder.get();
       switch (decoder.getMessageType()) {
-        case SEQUENCE:
-          accept((SequenceDecoder) decoder);
-          isApplicationMessage = false;
-          break;
-        case CONTEXT:
-          accept((ContextDecoder) decoder);
-          isApplicationMessage = false;
-          break;
-        case NOT_APPLIED:
-          // System.out.println("NotApplied received");
-          break;
-        case TERMINATE:
-          terminated(buffer);
-          isApplicationMessage = false;
-          break;
-        default:
-          System.err.println("Protocol violation");
+      case SEQUENCE:
+        accept((SequenceDecoder) decoder);
+        isApplicationMessage = false;
+        break;
+      case CONTEXT:
+        accept((ContextDecoder) decoder);
+        isApplicationMessage = false;
+        break;
+      case NOT_APPLIED:
+        // System.out.println("NotApplied received");
+        break;
+      case TERMINATE:
+        terminated(buffer);
+        isApplicationMessage = false;
+        break;
+      default:
+        System.err.println("Protocol violation");
       }
     }
     if (isApplicationMessage && !isEndOfStream) {

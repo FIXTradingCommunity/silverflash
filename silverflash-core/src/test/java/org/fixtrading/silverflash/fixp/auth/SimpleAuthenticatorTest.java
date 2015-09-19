@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.fixp.auth;
 
 import static org.junit.Assert.assertTrue;

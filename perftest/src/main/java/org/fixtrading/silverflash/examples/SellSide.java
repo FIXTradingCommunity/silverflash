@@ -1,17 +1,15 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ * Copyright 2015 FIX Protocol Ltd
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations under
+ * the License.
  *
  */
 package org.fixtrading.silverflash.examples;
@@ -63,7 +61,8 @@ import uk.co.real_logic.agrona.concurrent.UnsafeBuffer;
  * Presentation layer: SBE
  * <p>
  * Command line:
- * {@code java -cp session-perftest-0.0.1-SNAPSHOT-jar-with-dependencies.jar org.fixtrading.silverflash.examples.SellSide <properties-file> }
+ * {@code java -cp session-perftest-0.0.1-SNAPSHOT-jar-with-dependencies.jar org.fixtrading.silverflash.examples.SellSide 
+ * <properties-file> }
  *
  * @author Don Mendelson
  * 
@@ -83,6 +82,7 @@ public class SellSide {
       return receivers;
     }
   }
+  
   private class ServerListener implements MessageConsumer<UUID> {
 
     class OrderStruct {
@@ -93,8 +93,8 @@ public class SellSide {
     }
 
     private final AcceptedEncoder accept = new AcceptedEncoder();
-    private final ByteBuffer byteBuffer = ByteBuffer.allocateDirect(1420).order(
-        ByteOrder.nativeOrder());
+    private final ByteBuffer byteBuffer =
+        ByteBuffer.allocateDirect(1420).order(ByteOrder.nativeOrder());
     private final MutableDirectBuffer directBuffer = new UnsafeBuffer(byteBuffer);
     private final MessageHeaderWithFrame messageHeaderIn = new MessageHeaderWithFrame();
     private final EnterOrderDecoder order = new EnterOrderDecoder();
@@ -251,8 +251,8 @@ public class SellSide {
     sellSide.shutdown();
   }
 
-  private static Properties loadProperties(String fileName) throws IOException,
-      FileNotFoundException {
+  private static Properties loadProperties(String fileName)
+      throws IOException, FileNotFoundException {
     Properties defaults = setDefaultProperties();
     Properties props = new Properties(defaults);
 
@@ -342,9 +342,8 @@ public class SellSide {
     int maxCore = Integer.parseInt(props.getProperty(CSET_MAX_CORE));
 
     SimpleDirectory directory = new SimpleDirectory();
-    engine =
-        Engine.builder().withCoreRange(minCore, maxCore)
-            .withAuthenticator(new SimpleAuthenticator().withDirectory(directory)).build();
+    engine = Engine.builder().withCoreRange(minCore, maxCore)
+        .withAuthenticator(new SimpleAuthenticator().withDirectory(directory)).build();
     // engine.getReactor().setTrace(true, "server");
     engine.open();
 
@@ -355,23 +354,19 @@ public class SellSide {
 
     boolean isMultiplexed = serverConfig.isTransportMultiplexed();
 
-    FixpSessionFactory fixpSessionFactory =
-        new FixpSessionFactory(engine.getReactor(), serverConfig.getKeepaliveInterval(),
-            isMultiplexed);
+    FixpSessionFactory fixpSessionFactory = new FixpSessionFactory(engine.getReactor(),
+        serverConfig.getKeepaliveInterval(), isMultiplexed);
 
     String protocol = props.getProperty(PROTOCOL_KEY);
 
     if (isMultiplexed) {
       if (sharedTransport == null) {
-        sharedTransport =
-            FixpSharedTransportAdaptor
-                .builder()
-                .withReactor(engine.getReactor())
-                .withTransport(createRawTransport(protocol))
-                .withMessageConsumerSupplier(consumerSupplier)
-                .withBufferSupplier(
-                    new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(
-                        ByteOrder.nativeOrder()))).withFlowType(FlowType.IDEMPOTENT).build();
+        sharedTransport = FixpSharedTransportAdaptor.builder().withReactor(engine.getReactor())
+            .withTransport(createRawTransport(protocol))
+            .withMessageConsumerSupplier(consumerSupplier)
+            .withBufferSupplier(new SingleBufferSupplier(
+                ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
+            .withFlowType(FlowType.IDEMPOTENT).build();
 
         sharedTransport.openUnderlyingTransport();
       }
@@ -380,21 +375,20 @@ public class SellSide {
       int localport = Integer.parseInt(props.getProperty(LOCAL_PORT_KEY));
       final InetSocketAddress serverAddress = new InetSocketAddress(localhost, localport);
 
-      Function<Transport, Session<UUID>> clientAcceptor =
-          serverTransport -> {
-            int keepaliveInterval;
-            Session<UUID> serverSession =
-                fixpSessionFactory.createServerSession(serverTransport, new SingleBufferSupplier(
-                    ByteBuffer.allocateDirect(16 * 1024).order(ByteOrder.nativeOrder())),
-                    consumerSupplier.get(), FlowType.IDEMPOTENT);
+      Function<Transport, Session<UUID>> clientAcceptor = serverTransport -> {
+        int keepaliveInterval;
+        Session<UUID> serverSession = fixpSessionFactory.createServerSession(serverTransport,
+            new SingleBufferSupplier(
+                ByteBuffer.allocateDirect(16 * 1024).order(ByteOrder.nativeOrder())),
+            consumerSupplier.get(), FlowType.IDEMPOTENT);
 
-            try {
-              serverSession.open();
-            } catch (IOException e) {
-              exceptionConsumer.accept(e);
-            }
-            return serverSession;
-          };
+        try {
+          serverSession.open();
+        } catch (IOException e) {
+          exceptionConsumer.accept(e);
+        }
+        return serverSession;
+      };
 
       tcpAcceptor =
           new TcpAcceptor(engine.getIOReactor().getSelector(), serverAddress, clientAcceptor);

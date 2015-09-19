@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.transport;
 
 import java.io.IOException;
@@ -43,9 +44,12 @@ abstract class AbstractTcpAcceptor implements Acceptor {
   /**
    * Constructor
    * 
-   * @param selector an IO reactor
-   * @param localAddress listen address
-   * @param transportWrapper a function to invoke when a connection is accepted
+   * @param selector
+   *          an IO reactor
+   * @param localAddress
+   *          listen address
+   * @param transportWrapper
+   *          a function to invoke when a connection is accepted
    */
   protected AbstractTcpAcceptor(Selector selector, SocketAddress localAddress,
       Function<Transport, ?> transportWrapper) {

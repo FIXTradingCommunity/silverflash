@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.fixp;
 
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.ServiceEventType.SERVICE_STORE_RETREIVE;
@@ -109,14 +110,14 @@ public class Retransmitter implements Service {
           try {
             if (!requestMessagesFromStore(value.result, requestTimestamp, fromSeqNo, count)) {
               // reject for in-flight request
+            }
+          } catch (StoreException ex) {
+            // notify client?
+          }
+        }
+      }
     }
-  } catch (StoreException ex) {
-    // notify client?
-  }
-}
-}
-}
-} ;
+  };
 
   private Subscription serviceStoreRetrieveSubscription;
   private final Sessions sessions;
@@ -125,9 +126,12 @@ public class Retransmitter implements Service {
   /**
    * Constructor
    * 
-   * @param reactor message pub / sub
-   * @param store a repository of messages
-   * @param sessions a collection of open sessions
+   * @param reactor
+   *          message pub / sub
+   * @param store
+   *          a repository of messages
+   * @param sessions
+   *          a collection of open sessions
    */
   public Retransmitter(EventReactor<ByteBuffer> reactor, MessageStore store, Sessions sessions) {
     Objects.requireNonNull(reactor);

@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.reactor;
 
 import java.util.Arrays;
@@ -44,8 +45,9 @@ public final class Topics {
     @Override
     public int compareTo(Topic obj) {
       Objects.requireNonNull(obj);
-      if (getClass() != obj.getClass())
+      if (getClass() != obj.getClass()) {
         return 1;
+      }
       TopicImpl other = (TopicImpl) obj;
 
       int result = 0;
@@ -61,12 +63,15 @@ public final class Topics {
 
     @Override
     public boolean equals(Object obj) {
-      if (this == obj)
+      if (this == obj) {
         return true;
-      if (obj == null)
+      }
+      if (obj == null) {
         return false;
-      if (getClass() != obj.getClass())
+      }
+      if (getClass() != obj.getClass()) {
         return false;
+      }
       TopicImpl other = (TopicImpl) obj;
       return Arrays.equals(parts, other.parts);
     }
@@ -84,8 +89,9 @@ public final class Topics {
     }
 
     public boolean isSubtopic(Topic obj) {
-      if (getClass() != obj.getClass())
+      if (getClass() != obj.getClass()) {
         return false;
+      }
       TopicImpl other = (TopicImpl) obj;
 
       if (other.parts.length < parts.length) {
@@ -93,8 +99,9 @@ public final class Topics {
       }
 
       for (int i = 0; i < parts.length; i++) {
-        if (parts[i] != other.parts[i])
+        if (parts[i] != other.parts[i]) {
           return false;
+        }
       }
 
       return true;

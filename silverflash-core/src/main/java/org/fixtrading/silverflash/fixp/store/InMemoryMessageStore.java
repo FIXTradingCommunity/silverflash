@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.fixp.store;
 
 import java.nio.ByteBuffer;
@@ -106,8 +107,9 @@ public class InMemoryMessageStore implements MessageStore {
     final ArrayList<ByteBuffer> messages = messageMap.get(sessionId);
     if (messages != null) {
       return messages.size();
-    } else
+    } else {
       return 0;
+    }
   }
 
 }

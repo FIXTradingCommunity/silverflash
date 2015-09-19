@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+
 package org.fixtrading.silverflash.fixp;
 
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.FromSessionEventType.SESSION_READY;
@@ -438,18 +439,22 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
    */
   @Override
   public boolean equals(Object obj) {
-    if (this == obj)
+    if (this == obj) {
       return true;
-    if (obj == null)
+    }
+    if (obj == null) {
       return false;
-    if (!(obj instanceof FixpSession))
+    }
+    if (!(obj instanceof FixpSession)) {
       return false;
+    }
     FixpSession other = (FixpSession) obj;
     if (sessionId == null || sessionId.equals(SessionId.EMPTY) || other.sessionId == null
         || other.sessionId.equals(SessionId.EMPTY)) {
       return super.equals(obj);
-    } else if (!sessionId.equals(other.sessionId))
+    } else if (!sessionId.equals(other.sessionId)) {
       return false;
+    }
     return true;
   }
 
