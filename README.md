@@ -1,6 +1,6 @@
 # silverflash
 This project is a reference implementation of FIXP Performance Session Layer. It is intended to 
-help aid developers of financial and other critical applications. Since the protocol stack is 
+aid developers of financial and other critical applications. Since the protocol stack is 
 standardized, it serves to exchange messages between organizations while keeping low latency
 characteristics.
 
@@ -17,7 +17,7 @@ At presentation layer (layer 6), this implementation uses Simple Binary Encoding
 See specifications at [FIXTradingCommunity/fix-simple-binary-encoding](https://github.com/FIXTradingCommunity/fix-simple-binary-encoding).
 
 At transport layer (layer 4), this project provides wrappers for common transports, including TCP 
-and UDP, as well as interprocess communications.
+and UDP, as well as interprocess communications for internal messaging.
 
 ## License
 ©Copyright 2015 FIX Protocol Limited
@@ -34,11 +34,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-## Requirements
+## Prerequisites
 This project requires Java 8. It should run on any platform for which the JVM is supported.
 
 This project is intended to otherwise require minimal dependencies.
 
 ## Build
-The project is built with Maven. For development details, see the project wiki.
+The project is built with Maven. For developer details, see the project wiki.
 
