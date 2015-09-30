@@ -103,6 +103,10 @@ public class MemoryTransportBenchmark {
   private Transport serverTransport;
   private ByteBuffer src;
 
+  private Dispatcher serverDispatcher;
+
+  private Dispatcher clientDispatcher;
+
   @TearDown
   public void detroyTestEnvironment() {
     clientTransport.close();
@@ -114,11 +118,13 @@ public class MemoryTransportBenchmark {
     threadFactory = new AffinityThreadFactory(true, true, "benchmark");
     serverBuffers =
         new SingleBufferSupplier(ByteBuffer.allocate(bufferSize).order(ByteOrder.nativeOrder()));
-    serverTransport = new SharedMemoryTransport(false, true, threadFactory);
+    serverDispatcher = new Dispatcher(threadFactory);
+    serverTransport = new SharedMemoryTransport(false, true, 1, serverDispatcher);
     serverTransport.open(serverBuffers, new Reflector(serverTransport));
     clientBuffers =
         new SingleBufferSupplier(ByteBuffer.allocate(bufferSize).order(ByteOrder.nativeOrder()));
-    clientTransport = new SharedMemoryTransport(true, true, threadFactory);
+    clientDispatcher = new Dispatcher(threadFactory);
+    clientTransport = new SharedMemoryTransport(true, true, 1, clientDispatcher);
     clientTransport.open(clientBuffers, new NoopConsumer());
     message = new byte[bufferSize];
     Arrays.fill(message, (byte) 'x');

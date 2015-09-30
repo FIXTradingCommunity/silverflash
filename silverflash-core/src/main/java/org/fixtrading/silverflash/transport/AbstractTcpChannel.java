@@ -24,9 +24,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 /**
@@ -36,67 +34,8 @@ import java.util.function.Supplier;
  * @author Don Mendelson
  *
  */
-abstract class AbstractTcpChannel implements Transport, Channel {
+abstract class AbstractTcpChannel implements ReactiveTransport {
 
-
-  /**
-   * Dispatcher thread passes messages to consumers
-   */
-  class Dispatcher implements Runnable {
-
-    private final AtomicBoolean isRunning = new AtomicBoolean();
-    private final AtomicBoolean started = new AtomicBoolean();
-    private Thread thread;
-    private final CopyOnWriteArrayList<AbstractTcpChannel> transports =
-        new CopyOnWriteArrayList<>();
-
-    public Dispatcher(ThreadFactory threadFactory) {
-      this.thread = threadFactory.newThread(this);
-    }
-
-    public void addTransport(AbstractTcpChannel transport) {
-      transports.add(transport);
-      if (isRunning.compareAndSet(false, true)) {
-        thread.start();
-        while (!started.compareAndSet(true, true));
-      }
-    }
-
-    public void removeTransport(AbstractTcpChannel transport) {
-      transports.remove(transport);
-      if (transports.isEmpty()) {
-        isRunning.set(false);
-        if (thread != null) {
-          try {
-            thread.join(1000);
-          } catch (InterruptedException e) {
-            e.printStackTrace();
-          }
-        }
-      }
-    }
-
-    public void run() {
-      started.set(true);
-      while (isRunning.compareAndSet(true, true)) {
-        for (int i = 0; i < transports.size(); i++) {
-          try {
-            final AbstractTcpChannel transport = transports.get(i);
-            if (transport.isOpen()) {
-              try {
-                transport.read();
-              } catch (IOException e) {
-                removeTransport(transport);
-              }
-            }
-          } catch (ArrayIndexOutOfBoundsException ex) {
-            // item removed while iterating - retry iteration
-          }
-        }
-      }
-      started.set(false);
-    }
-  }
 
   protected Supplier<ByteBuffer> buffers;
   protected TransportConsumer consumer;
@@ -122,16 +61,6 @@ abstract class AbstractTcpChannel implements Transport, Channel {
   AbstractTcpChannel(Selector selector) {
     Objects.requireNonNull(selector);
     this.selector = selector;
-  }
-
-  /**
-   * Constructor
-   * 
-   * @param threadFactory provides a thread for dispatching
-   */
-  AbstractTcpChannel(ThreadFactory threadFactory) {
-    Objects.requireNonNull(threadFactory);
-    this.dispatcher = new Dispatcher(threadFactory);
   }
 
   public void close() {
@@ -160,6 +89,10 @@ abstract class AbstractTcpChannel implements Transport, Channel {
   @Override
   public boolean isOpen() {
     return socketChannel.isOpen();
+  }
+  
+  public boolean isReadyToRead() {
+    return isOpen();
   }
 
   public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
@@ -245,7 +178,7 @@ abstract class AbstractTcpChannel implements Transport, Channel {
     int bytesWritten = 0;
     // This could block for a slow consumer - consider retries or breaking
     // session if write() returns 0
-    while (srcs[i - 1].hasRemaining()) {
+    while (i > 0 && srcs[i - 1].hasRemaining()) {
       bytesWritten += socketChannel.write(srcs, 0, i);
     }
     return bytesWritten;

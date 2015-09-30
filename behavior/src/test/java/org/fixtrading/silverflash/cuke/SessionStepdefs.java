@@ -118,6 +118,14 @@ public class SessionStepdefs {
       return component.isOpen();
     }
 
+    /* (non-Javadoc)
+     * @see org.fixtrading.silverflash.transport.Transport#isReadyToRead()
+     */
+    @Override
+    public boolean isReadyToRead() {
+      return component.isReadyToRead();
+    }
+
   }
 
 

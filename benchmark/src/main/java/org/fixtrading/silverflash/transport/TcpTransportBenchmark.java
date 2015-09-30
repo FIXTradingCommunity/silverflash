@@ -170,7 +170,8 @@ public class TcpTransportBenchmark {
       clientIOReactor.open().get();
       clientTransport = createClientTcpTransport(clientIOReactor.getSelector(), serverAddress);
     } else {
-      clientTransport = createClientTcpTransport(threadFactory, serverAddress);
+      Dispatcher dispatcher = new Dispatcher(threadFactory);
+      clientTransport = createClientTcpTransport(dispatcher, serverAddress);
     }
     clientBuffers =
         new SingleBufferSupplier(ByteBuffer.allocate(bufferSize * batchSize * 64).order(
@@ -182,9 +183,8 @@ public class TcpTransportBenchmark {
     Thread.sleep(500L);
   }
 
-  private TcpConnectorTransport createClientTcpTransport(AffinityThreadFactory threadFactory,
-      InetSocketAddress remoteAddress) {
-    return new TcpConnectorTransport(threadFactory, remoteAddress);
+  private TcpConnectorTransport createClientTcpTransport(Dispatcher dispatcher, InetSocketAddress remoteAddress) {
+    return new TcpConnectorTransport(dispatcher, remoteAddress);
   }
 
   private TcpAcceptor createTcpAcceptor(Selector selector, SocketAddress localAddress,

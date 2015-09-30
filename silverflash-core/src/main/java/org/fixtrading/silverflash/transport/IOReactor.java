@@ -41,12 +41,12 @@ public class IOReactor implements Runnable, Service {
   private Thread reactorThread;
   private final AtomicBoolean running = new AtomicBoolean();
   private Selector selector;
-  private ThreadFactory threadFactory;
+  private final ThreadFactory threadFactory;
   private CompletableFuture<IOReactor> future;
 
 
   public IOReactor() {
-
+    this.threadFactory = Executors.defaultThreadFactory();
   }
 
   public IOReactor(ThreadFactory threadFactory) {
@@ -75,9 +75,6 @@ public class IOReactor implements Runnable, Service {
   public CompletableFuture<IOReactor> open() {
     if (running.compareAndSet(false, false)) {
       future = new CompletableFuture<>();
-      if (threadFactory == null) {
-        threadFactory = Executors.defaultThreadFactory();
-      }
       reactorThread = threadFactory.newThread(this);
       reactorThread.start();
       return future;
@@ -113,14 +110,14 @@ public class IOReactor implements Runnable, Service {
             ((Connector) attachment).readyToConnect();
           } else {
             if (selectedKey.isReadable()) {
-              ((Channel) attachment).readyToRead();
+              ((ReactiveTransport) attachment).readyToRead();
             }
 
             // Check if the key is still valid, since it might
             // have been invalidated in the read handler
             // (for instance, the socket might have been closed)
             if (selectedKey.isValid() && selectedKey.isWritable()) {
-              ((Channel) attachment).readyToWrite();
+              ((ReactiveTransport) attachment).readyToWrite();
             }
           }
         }

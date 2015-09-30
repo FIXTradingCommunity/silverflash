@@ -56,8 +56,8 @@ public class TcpConnectorTransport extends AbstractTcpChannel implements Connect
    * @param threadFactory supplies a thread for a dedicated dispatcher
    * @param remoteAddress address to connect to
    */
-  public TcpConnectorTransport(ThreadFactory threadFactory, SocketAddress remoteAddress) {
-    super(threadFactory);
+  public TcpConnectorTransport(Dispatcher dispatcher, SocketAddress remoteAddress) {
+    super(dispatcher);
     Objects.requireNonNull(remoteAddress);
     this.remoteAddress = remoteAddress;
   }

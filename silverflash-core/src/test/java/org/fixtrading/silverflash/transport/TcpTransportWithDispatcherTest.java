@@ -124,7 +124,7 @@ public class TcpTransportWithDispatcherTest {
     tcpAcceptor.open().get();
 
     try {
-      clientTransport = new TcpConnectorTransport(threadFactory, serverAddress);
+      clientTransport = new TcpConnectorTransport(new Dispatcher(threadFactory), serverAddress);
 
       TransportConsumer clientReceiver = new TransportConsumer() {
 
@@ -187,7 +187,7 @@ public class TcpTransportWithDispatcherTest {
     tcpAcceptor.open().get();
 
     try {
-      clientTransport = new TcpConnectorTransport(threadFactory, serverAddress);
+      clientTransport = new TcpConnectorTransport(new Dispatcher(threadFactory), serverAddress);
 
       TransportConsumer clientReceiver = new TransportConsumer() {
 

@@ -91,4 +91,11 @@ public interface Transport {
    * @return Returns {@code true} if this Transport is open
    */
   boolean isOpen();
+  
+  /**
+   * Tells whether this Transport is ready to read
+   * 
+   * @return Returns {@code true} if this Transport is ready to read
+   */
+  boolean isReadyToRead();
 }

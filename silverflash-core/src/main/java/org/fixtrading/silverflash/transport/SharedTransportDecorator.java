@@ -285,7 +285,11 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
   public boolean isOpen() {
     return transport.isOpen();
   }
-
+  
+  public boolean isReadyToRead() {
+    return isOpen();
+  }
+  
   /*
    * (non-Javadoc)
    * 

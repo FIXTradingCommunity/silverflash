@@ -49,6 +49,7 @@ import org.fixtrading.silverflash.fixp.SessionReadyFuture;
 import org.fixtrading.silverflash.fixp.SessionTerminatedFuture;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
 import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.transport.Dispatcher;
 import org.fixtrading.silverflash.transport.SharedMemoryTransport;
 import org.fixtrading.silverflash.transport.TcpConnectorTransport;
 import org.fixtrading.silverflash.transport.Transport;
@@ -615,7 +616,7 @@ public class BuySide implements Runnable {
         transport = new TcpConnectorTransport(engine.getIOReactor().getSelector(), remoteAddress);
         break;
       case PROTOCOL_SHARED_MEMORY:
-        transport = new SharedMemoryTransport(true, 1, true, engine.getThreadFactory());
+        transport = new SharedMemoryTransport(true, true, 1, new Dispatcher(engine.getThreadFactory()));
         break;
       default:
         throw new IOException("Unsupported protocol");

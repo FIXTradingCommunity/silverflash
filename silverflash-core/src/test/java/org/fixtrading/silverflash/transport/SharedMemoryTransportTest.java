@@ -76,12 +76,16 @@ public class SharedMemoryTransportTest {
   private SharedMemoryTransport clientTransport;
   private SharedMemoryTransport serverTransport;
   private AffinityThreadFactory threadFactory;
+  private Dispatcher serverDispatcher;
+  private Dispatcher clientDispatcher;
 
   @Before
   public void setUp() throws Exception {
     threadFactory = new AffinityThreadFactory(1, true, true, "SHMEMTRAN");
-    serverTransport = new SharedMemoryTransport(false, 1, true, threadFactory);
-    clientTransport = new SharedMemoryTransport(true, 1, true, threadFactory);
+    serverDispatcher = new Dispatcher(threadFactory);
+    serverTransport = new SharedMemoryTransport(false, true, 1, serverDispatcher);
+    clientDispatcher = new Dispatcher(threadFactory);
+    clientTransport = new SharedMemoryTransport(true, true, 1, clientDispatcher);
 
     messages = new byte[messageCount][];
     for (int i = 0; i < messageCount; ++i) {
@@ -202,8 +206,8 @@ public class SharedMemoryTransportTest {
     serverTransport.close();
     clientTransport.close();
 
-    serverTransport = new SharedMemoryTransport(false, 1, false, threadFactory);
-    clientTransport = new SharedMemoryTransport(true, 1, false, threadFactory);
+    serverTransport = new SharedMemoryTransport(false, false, 1, serverDispatcher);
+    clientTransport = new SharedMemoryTransport(true, false, 1, clientDispatcher);
 
     serverTransport.open(
         new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),

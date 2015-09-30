@@ -46,6 +46,7 @@ import org.fixtrading.silverflash.fixp.FixpSharedTransportAdaptor;
 import org.fixtrading.silverflash.fixp.auth.SimpleAuthenticator;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
 import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.transport.Dispatcher;
 import org.fixtrading.silverflash.transport.SharedMemoryTransport;
 import org.fixtrading.silverflash.transport.TcpAcceptor;
 import org.fixtrading.silverflash.transport.Transport;
@@ -418,7 +419,7 @@ public class SellSide {
     Transport transport;
     switch (protocol) {
       case PROTOCOL_SHARED_MEMORY:
-        transport = new SharedMemoryTransport(false, 1, true, engine.getThreadFactory());
+        transport = new SharedMemoryTransport(false, true, 1, new Dispatcher(engine.getThreadFactory()));
         break;
       default:
         throw new IOException("Unsupported protocol");

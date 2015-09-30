@@ -34,7 +34,7 @@ import java.util.function.Supplier;
  */
 public class PipeTransport {
 
-  private abstract class HalfPipeTransport implements Channel, Transport {
+  private abstract class HalfPipeTransport implements ReactiveTransport {
     private Supplier<ByteBuffer> buffers;
     private TransportConsumer consumer;
 
@@ -56,6 +56,10 @@ public class PipeTransport {
       return getReadChannel().isOpen();
     }
 
+    public boolean isReadyToRead() {
+      return isOpen();
+    }
+    
     public void close() {
       try {
         getReadChannel().close();

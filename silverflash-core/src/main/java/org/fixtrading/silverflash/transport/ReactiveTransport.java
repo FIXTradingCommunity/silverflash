@@ -18,20 +18,20 @@
 package org.fixtrading.silverflash.transport;
 
 /**
- * Transport events
+ * A Transport with events
  * 
  * @author Don Mendelson
  *
  */
-public interface Channel {
+public interface ReactiveTransport extends Transport {
 
   /**
-   * Invoked when a Channel is ready to read
+   * Invoked when this ReactiveTransport is ready to read
    */
   void readyToRead();
 
   /**
-   * Invoked when a Channel is ready to write
+   * Invoked when this ReactiveTransport is ready to write
    */
   void readyToWrite();
 }
