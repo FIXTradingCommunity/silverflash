@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.fixtrading.silverflash.Service;
 
 /**
- * A IO event demultiplexor
+ * An IO event demultiplexor
  * 
  * @author Don Mendelson
  *
@@ -66,10 +66,6 @@ public class IOReactor implements Runnable, Service {
 
   public Selector getSelector() {
     return selector;
-  }
-
-  public boolean isRunning() {
-    return running.get();
   }
 
   public CompletableFuture<IOReactor> open() {
