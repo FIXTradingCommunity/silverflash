@@ -28,30 +28,34 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
- * A datagram-oriented unicast Transport
- * This Transport is demultiplexed by a Selector or added to a dedicated dispatcher.
- * thread
+ * A datagram-oriented unicast Transport This Transport is demultiplexed by a Selector or added to a
+ * dedicated dispatcher. thread
  * 
  * @author Don Mendelson
  *
  */
 public class UdpTransport implements ReactiveTransport {
 
-
   private Supplier<ByteBuffer> buffers;
   private TransportConsumer consumer;
   private Dispatcher dispatcher;
+  private final SocketAddress localAddress;
+  private final SocketAddress remoteAddress;
   private Selector selector;
   private DatagramChannel socketChannel;
-  private final SocketAddress remoteAddress;
-  private final SocketAddress localAddress;
 
   /**
-   * Constructor
+   * Constructor with a dedicated dispatcher thread
    * 
-   * @param dispatcher an existing thread for dispatching
+   * @param dispatcher
+   *          an existing thread for dispatching
+   * @param localAddress
+   *          local address to bind
+   * @param remoteAddress
+   *          remote address to connect to
    */
-  UdpTransport(Dispatcher dispatcher, SocketAddress localAddress, SocketAddress remoteAddress) {
+  public UdpTransport(Dispatcher dispatcher, SocketAddress localAddress,
+      SocketAddress remoteAddress) {
     Objects.requireNonNull(dispatcher);
     Objects.requireNonNull(localAddress);
     Objects.requireNonNull(remoteAddress);
@@ -61,17 +65,30 @@ public class UdpTransport implements ReactiveTransport {
   }
 
   /**
-   * Constructor
+   * Constructor with IO events
    * 
-   * @param selector event demultiplexor
+   * @param selector
+   *          event demultiplexor
+   * @param localAddress
+   *          local address to bind
+   * @param remoteAddress
+   *          remote address to connect to
+   * 
    */
-  UdpTransport(Selector selector, SocketAddress localAddress, SocketAddress remoteAddress) {
+  public UdpTransport(Selector selector, SocketAddress localAddress, SocketAddress remoteAddress) {
     Objects.requireNonNull(selector);
     Objects.requireNonNull(localAddress);
     Objects.requireNonNull(remoteAddress);
     this.selector = selector;
     this.localAddress = localAddress;
     this.remoteAddress = remoteAddress;
+  }
+
+  protected void addInterest(int ops) {
+    SelectionKey key = socketChannel.keyFor(selector);
+    if (key != null && key.isValid()) {
+      key.interestOps(key.readyOps() | ops);
+    }
   }
 
   public void close() {
@@ -93,6 +110,10 @@ public class UdpTransport implements ReactiveTransport {
     consumer.disconnected();
   }
 
+  Dispatcher getDispatcher() {
+    return dispatcher;
+  }
+
   public boolean isFifo() {
     return false;
   }
@@ -101,7 +122,7 @@ public class UdpTransport implements ReactiveTransport {
   public boolean isOpen() {
     return socketChannel.isOpen();
   }
-  
+
   public boolean isReadyToRead() {
     return isOpen();
   }
@@ -115,6 +136,7 @@ public class UdpTransport implements ReactiveTransport {
     register(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
     this.socketChannel.bind(localAddress);
     this.socketChannel.connect(remoteAddress);
+    consumer.connected();
   }
 
   public int read() throws IOException {
@@ -157,6 +179,20 @@ public class UdpTransport implements ReactiveTransport {
 
   }
 
+  protected void register(int ops) throws IOException {
+    socketChannel.configureBlocking(false);
+    if (selector != null) {
+      socketChannel.register(selector, ops, this);
+    }
+  }
+
+  protected void removeInterest(int ops) {
+    SelectionKey key = socketChannel.keyFor(selector);
+    if (key != null && key.isValid()) {
+      key.interestOps(key.readyOps() & ~ops);
+    }
+  }
+
   public void setReceiveBufferSize(int bufferSize) throws IOException {
     socketChannel.setOption(StandardSocketOptions.SO_RCVBUF, bufferSize);
   }
@@ -196,31 +232,5 @@ public class UdpTransport implements ReactiveTransport {
       bytesWritten += socketChannel.write(srcs, 0, i);
     }
     return bytesWritten;
-  }
-
-  protected void addInterest(int ops) {
-    SelectionKey key = socketChannel.keyFor(selector);
-    if (key != null && key.isValid()) {
-      key.interestOps(key.readyOps() | ops);
-    }
-  }
-
-  protected void register(int ops) throws IOException {
-    socketChannel.configureBlocking(false);
-    if (selector != null) {
-      socketChannel.register(selector, ops, this);
-    }
-  }
-
-  protected void removeInterest(int ops) {
-    SelectionKey key = socketChannel.keyFor(selector);
-    if (key != null && key.isValid()) {
-      key.interestOps(key.readyOps() & ~ops);
-    }
-  }
-
-
-  Dispatcher getDispatcher() {
-    return dispatcher;
   }
 }
