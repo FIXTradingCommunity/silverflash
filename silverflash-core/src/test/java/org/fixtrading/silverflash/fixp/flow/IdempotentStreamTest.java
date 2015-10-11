@@ -25,6 +25,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Session;
@@ -83,9 +84,8 @@ public class IdempotentStreamTest {
      * 
      * @see org.fixtrading.silverflash.Session#open()
      */
-    public void open() throws IOException {
-      // TODO Auto-generated method stub
-
+    public CompletableFuture<? extends Session<UUID>> open() {
+      return null;
     }
 
   }

@@ -18,12 +18,13 @@
 package org.fixtrading.silverflash.transport;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Objects;
-import java.util.function.Supplier;
+import java.util.concurrent.CompletableFuture;
+
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 
 /**
  * @author Don Mendelson
@@ -40,13 +41,24 @@ class TcpClientTransport extends AbstractTcpChannel {
     this.socketChannel = socketChannel;
   }
 
-  public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
+  public CompletableFuture<? extends Transport> open(BufferSupplier buffers,
+      TransportConsumer consumer) {
     Objects.requireNonNull(buffers);
     Objects.requireNonNull(consumer);
     this.buffers = buffers;
     this.consumer = consumer;
-    register(SelectionKey.OP_READ);
-    consumer.connected();
+
+    CompletableFuture<TcpClientTransport> future = new CompletableFuture<TcpClientTransport>();
+
+    try {
+      register(SelectionKey.OP_READ);
+      consumer.connected();
+      future.complete(this);
+    } catch (IOException ex) {
+      future.completeExceptionally(ex);
+    }
+
+    return future;
   }
 
 }

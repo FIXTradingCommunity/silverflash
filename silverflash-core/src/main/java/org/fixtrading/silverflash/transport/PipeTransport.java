@@ -24,7 +24,10 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.spi.SelectorProvider;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
+
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 
 /**
  * Provides a pair of pipes for bidirectional in-memory communications
@@ -42,14 +45,26 @@ public class PipeTransport {
 
     abstract Pipe.SinkChannel getWriteChannel();
 
-    public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
+    public CompletableFuture<? extends Transport> open(BufferSupplier buffers,
+        TransportConsumer consumer) {
       Objects.requireNonNull(buffers);
       Objects.requireNonNull(consumer);
+      CompletableFuture<Transport> future = new CompletableFuture<Transport>();
+
       this.buffers = buffers;
       this.consumer = consumer;
-      PipeTransport.this.open();
-      register();
-      connected();
+      
+      try {
+        PipeTransport.this.open();
+        register();
+        connected();
+      } catch (IOException ex) {
+        future.completeExceptionally(ex);
+        return future;
+      }
+
+      future.complete(this);
+      return future;
     }
 
     public boolean isOpen() {

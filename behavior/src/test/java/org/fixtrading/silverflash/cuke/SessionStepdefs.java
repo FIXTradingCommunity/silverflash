@@ -24,12 +24,12 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
-
 import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.auth.Directory;
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
 import org.fixtrading.silverflash.fixp.FixpSession;
 import org.fixtrading.silverflash.fixp.SessionReadyFuture;
@@ -88,9 +88,8 @@ public class SessionStepdefs {
       this.isFifo = isFifo;
     }
 
-    public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
-      component.open(buffers, consumer);
-
+    public CompletableFuture<? extends Transport> open(BufferSupplier buffers, TransportConsumer consumer) {
+      return component.open(buffers, consumer);
     }
 
     public void close() {

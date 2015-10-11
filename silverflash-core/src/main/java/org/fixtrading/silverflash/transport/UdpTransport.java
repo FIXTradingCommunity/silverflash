@@ -19,13 +19,15 @@ package org.fixtrading.silverflash.transport;
 
 import java.io.IOException;
 import java.net.SocketAddress;
-import java.net.StandardSocketOptions;
-import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.util.Objects;
-import java.util.function.Supplier;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+
+import org.fixtrading.silverflash.Service;
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 
 /**
  * A datagram-oriented unicast Transport This Transport is demultiplexed by a Selector or added to a
@@ -34,16 +36,11 @@ import java.util.function.Supplier;
  * @author Don Mendelson
  *
  */
-public class UdpTransport implements ReactiveTransport {
+public class UdpTransport extends AbstractUdpTransport  {
 
-  private Supplier<ByteBuffer> buffers;
-  private TransportConsumer consumer;
-  private Dispatcher dispatcher;
   private final SocketAddress localAddress;
   private final SocketAddress remoteAddress;
-  private Selector selector;
-  private DatagramChannel socketChannel;
-
+  
   /**
    * Constructor with a dedicated dispatcher thread
    * 
@@ -56,10 +53,9 @@ public class UdpTransport implements ReactiveTransport {
    */
   public UdpTransport(Dispatcher dispatcher, SocketAddress localAddress,
       SocketAddress remoteAddress) {
-    Objects.requireNonNull(dispatcher);
-    Objects.requireNonNull(localAddress);
+    super(dispatcher);
+     Objects.requireNonNull(localAddress);
     Objects.requireNonNull(remoteAddress);
-    this.dispatcher = dispatcher;
     this.localAddress = localAddress;
     this.remoteAddress = remoteAddress;
   }
@@ -76,161 +72,51 @@ public class UdpTransport implements ReactiveTransport {
    * 
    */
   public UdpTransport(Selector selector, SocketAddress localAddress, SocketAddress remoteAddress) {
-    Objects.requireNonNull(selector);
+    super(selector);
     Objects.requireNonNull(localAddress);
     Objects.requireNonNull(remoteAddress);
-    this.selector = selector;
     this.localAddress = localAddress;
     this.remoteAddress = remoteAddress;
   }
 
-  protected void addInterest(int ops) {
-    SelectionKey key = socketChannel.keyFor(selector);
-    if (key != null && key.isValid()) {
-      key.interestOps(key.readyOps() | ops);
-    }
-  }
-
-  public void close() {
-    try {
-      socketChannel.close();
-    } catch (IOException e) {
-
-    }
-    if (consumer != null) {
-      consumer.disconnected();
-    }
-  }
-
-  public void connected() {
-    // Transport is connected when created
-  }
-
-  public void disconnected() {
-    consumer.disconnected();
-  }
-
-  Dispatcher getDispatcher() {
-    return dispatcher;
-  }
-
-  public boolean isFifo() {
-    return false;
-  }
-
-  @Override
-  public boolean isOpen() {
-    return socketChannel.isOpen();
-  }
-
-  public boolean isReadyToRead() {
-    return isOpen();
-  }
-
-  public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
+  public CompletableFuture<? extends Transport> open(BufferSupplier buffers,
+      TransportConsumer consumer) {
     Objects.requireNonNull(buffers);
     Objects.requireNonNull(consumer);
     this.buffers = buffers;
     this.consumer = consumer;
-    this.socketChannel = DatagramChannel.open();
-    register(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
-    this.socketChannel.bind(localAddress);
-    this.socketChannel.connect(remoteAddress);
-    consumer.connected();
-  }
 
-  public int read() throws IOException {
-    ByteBuffer buffer = buffers.get();
-    buffer.clear();
-    int bytesRead = socketChannel.read(buffer);
-    if (bytesRead > 0) {
-      buffer.flip();
-      consumer.accept(buffer);
-    }
-    return bytesRead;
-  }
+    CompletableFuture<UdpTransport> future = new CompletableFuture<UdpTransport>();
 
-  public void readyToRead() {
-    removeInterest(SelectionKey.OP_READ);
-    int bytesRead = 0;
     try {
-      final ByteBuffer buffer = buffers.get();
-      buffer.clear();
-      bytesRead = socketChannel.read(buffer);
-      if (bytesRead < 0) {
-        disconnected();
+      this.socketChannel = DatagramChannel.open();
+      register(SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+      this.socketChannel.bind(localAddress);
+      this.socketChannel.connect(remoteAddress);
+
+      if (dispatcher != null) {
+        dispatcher.addTransport(this);
+      }
+      if (buffers instanceof Service) {
+        ((Service) buffers).open().get();
+      }
+      
+      future.complete(this);
+      consumer.connected();
+    } catch (IOException | InterruptedException ex) {
+      future.completeExceptionally(ex);
+      try {
         socketChannel.close();
-      } else {
-        try {
-          buffer.flip();
-          consumer.accept(buffer);
-        } catch (Exception e) {
-          e.printStackTrace();
-        } finally {
-          addInterest(SelectionKey.OP_READ);
-        }
+      } catch (IOException e) {
       }
-    } catch (IOException e) {
-      disconnected();
+    } catch (ExecutionException ex) {
+      future.completeExceptionally(ex.getCause());
+      try {
+        socketChannel.close();
+      } catch (IOException e) {
+       }
     }
-  }
 
-  public void readyToWrite() {
-
-  }
-
-  protected void register(int ops) throws IOException {
-    socketChannel.configureBlocking(false);
-    if (selector != null) {
-      socketChannel.register(selector, ops, this);
-    }
-  }
-
-  protected void removeInterest(int ops) {
-    SelectionKey key = socketChannel.keyFor(selector);
-    if (key != null && key.isValid()) {
-      key.interestOps(key.readyOps() & ~ops);
-    }
-  }
-
-  public void setReceiveBufferSize(int bufferSize) throws IOException {
-    socketChannel.setOption(StandardSocketOptions.SO_RCVBUF, bufferSize);
-  }
-
-  public void setSendBufferSize(int bufferSize) throws IOException {
-    socketChannel.setOption(StandardSocketOptions.SO_SNDBUF, bufferSize);
-  }
-
-  /**
-   * Keeps attempting to drain buffer until bytes written is zero due to slow consumer.
-   */
-  public int write(ByteBuffer src) throws IOException {
-    src.flip();
-    int totalBytesWritten = 0;
-    while (src.hasRemaining()) {
-      int bytesWritten = socketChannel.write(src);
-      totalBytesWritten += bytesWritten;
-      if (bytesWritten == 0) {
-        break;
-      }
-    }
-    return totalBytesWritten;
-  }
-
-  public long write(ByteBuffer[] srcs) throws IOException {
-    int i = 0;
-    for (i = 0; i < srcs.length; i++) {
-      if (srcs[i] == null) {
-        break;
-      }
-      srcs[i].flip();
-    }
-    int bytesWritten = 0;
-    // This could block for a slow consumer - consider retries or breaking
-    // session if write() returns 0
-    while (i > 0 && srcs[i - 1].hasRemaining()) {
-      bytesWritten += socketChannel.write(srcs, 0, i);
-    }
-    return bytesWritten;
+    return future;
   }
 }

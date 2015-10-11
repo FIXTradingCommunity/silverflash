@@ -14,50 +14,46 @@
  * limitations under the License.
  *
  */
-
 package org.fixtrading.silverflash.transport;
 
 import java.io.IOException;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
+import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.nio.channels.SocketChannel;
 import java.util.Objects;
-import java.util.function.Supplier;
+
+import org.fixtrading.silverflash.Service;
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 
 /**
- * Base class for TCP transports demultiplexed by a Selector or added to a dedicated dispatcher
- * thread
- * 
- * @author Don Mendelson
+ * @author Donald
  *
  */
-abstract class AbstractTcpChannel implements ReactiveTransport {
+abstract class AbstractUdpTransport implements ReactiveTransport {
 
-
-  protected Supplier<ByteBuffer> buffers;
+  protected BufferSupplier buffers;
   protected TransportConsumer consumer;
   protected Dispatcher dispatcher;
   protected Selector selector;
-  protected SocketChannel socketChannel;
+  protected DatagramChannel socketChannel;
 
-  /**
-   * Constructor for use with a dedicated Dispatcher
-    */
-  AbstractTcpChannel(Dispatcher dispatcher) {
+  public AbstractUdpTransport(Selector selector) {
+    Objects.requireNonNull(selector);
+    this.selector = selector;
+  }
+
+  protected AbstractUdpTransport(Dispatcher dispatcher) {
     Objects.requireNonNull(dispatcher);
     this.dispatcher = dispatcher;
   }
 
-  /**
-   * Constructor for use with IOReactor
-   * 
-   * @param selector event demultiplexor
-   */
-  AbstractTcpChannel(Selector selector) {
-    Objects.requireNonNull(selector);
-    this.selector = selector;
+  protected void addInterest(int ops) {
+    SelectionKey key = socketChannel.keyFor(selector);
+    if (key != null && key.isValid()) {
+      key.interestOps(key.readyOps() | ops);
+    }
   }
 
   public void close() {
@@ -72,6 +68,14 @@ abstract class AbstractTcpChannel implements ReactiveTransport {
     if (consumer != null) {
       consumer.disconnected();
     }
+    if (buffers instanceof Service) {
+      try {
+        ((Service) buffers).close();
+      } catch (Exception e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      }
+    }
   }
 
   public void connected() {
@@ -83,33 +87,27 @@ abstract class AbstractTcpChannel implements ReactiveTransport {
   }
 
   public boolean isFifo() {
-    return true;
+    return false;
   }
 
   @Override
   public boolean isOpen() {
     return socketChannel.isOpen();
   }
-  
+
   public boolean isReadyToRead() {
     return isOpen();
-  }
-
-  public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
-    Objects.requireNonNull(buffers);
-    Objects.requireNonNull(consumer);
-    this.buffers = buffers;
-    this.consumer = consumer;
-    if (dispatcher != null) {
-      dispatcher.addTransport(this);
-    }
   }
 
   public int read() throws IOException {
     ByteBuffer buffer = buffers.get();
     buffer.clear();
     int bytesRead = socketChannel.read(buffer);
-    if (bytesRead > 0) {
+    buffers.commit();
+    if (bytesRead < 0) {
+      disconnected();
+      socketChannel.close();
+    } else {
       buffer.flip();
       consumer.accept(buffer);
     }
@@ -118,25 +116,20 @@ abstract class AbstractTcpChannel implements ReactiveTransport {
 
   public void readyToRead() {
     removeInterest(SelectionKey.OP_READ);
-    int bytesRead = 0;
     try {
       final ByteBuffer buffer = buffers.get();
       buffer.clear();
-      bytesRead = socketChannel.read(buffer);
+      int bytesRead = socketChannel.read(buffer);
+      buffers.commit();
       if (bytesRead < 0) {
-        // Peer reset
         disconnected();
         socketChannel.close();
       } else {
-        try {
-          buffer.flip();
-          consumer.accept(buffer);
-        } catch (Exception e) {
-          e.printStackTrace();
-        } finally {
-          addInterest(SelectionKey.OP_READ);
-        }
+        buffer.flip();
+        consumer.accept(buffer);
+        addInterest(SelectionKey.OP_READ);
       }
+
     } catch (IOException e) {
       disconnected();
     }
@@ -144,6 +137,20 @@ abstract class AbstractTcpChannel implements ReactiveTransport {
 
   public void readyToWrite() {
 
+  }
+
+  protected void register(int ops) throws IOException {
+    socketChannel.configureBlocking(false);
+    if (selector != null) {
+      socketChannel.register(selector, ops, this);
+    }
+  }
+
+  protected void removeInterest(int ops) {
+    SelectionKey key = socketChannel.keyFor(selector);
+    if (key != null && key.isValid()) {
+      key.interestOps(key.readyOps() & ~ops);
+    }
   }
 
   public void setReceiveBufferSize(int bufferSize) throws IOException {
@@ -187,25 +194,4 @@ abstract class AbstractTcpChannel implements ReactiveTransport {
     return bytesWritten;
   }
 
-  protected void addInterest(int ops) {
-    SelectionKey key = socketChannel.keyFor(selector);
-    if (key != null && key.isValid()) {
-      key.interestOps(key.readyOps() | ops);
-    }
-  }
-
-  protected void register(int ops) throws IOException {
-    socketChannel.configureBlocking(false);
-    socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
-    if (selector != null) {
-      socketChannel.register(selector, ops, this);
-    }
-  }
-
-  protected void removeInterest(int ops) {
-    SelectionKey key = socketChannel.keyFor(selector);
-    if (key != null && key.isValid()) {
-      key.interestOps(key.readyOps() & ~ops);
-    }
-  }
 }

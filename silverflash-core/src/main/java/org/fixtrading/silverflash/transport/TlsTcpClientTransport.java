@@ -24,9 +24,11 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.security.KeyStore;
 import java.util.Objects;
-import java.util.function.Supplier;
+import java.util.concurrent.CompletableFuture;
 
 import javax.net.ssl.SSLSession;
+
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 
 /**
  * @author Don Mendelson
@@ -40,26 +42,36 @@ class TlsTcpClientTransport extends AbstractTlsChannel {
     this.socketChannel = socketChannel;
   }
 
-  public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
+  public CompletableFuture<? extends Transport> open(BufferSupplier buffers,
+      TransportConsumer consumer) {
     Objects.requireNonNull(buffers);
     Objects.requireNonNull(consumer);
     this.buffers = buffers;
     this.consumer = consumer;
+
+    CompletableFuture<TlsTcpClientTransport> future = new CompletableFuture<TlsTcpClientTransport>();
+
     SSLSession session = engine.getSession();
-    peerNetData =
-        ByteBuffer.allocateDirect(session.getPacketBufferSize()).order(ByteOrder.nativeOrder());
-    peerAppData =
-        ByteBuffer.allocateDirect(session.getApplicationBufferSize())
-            .order(ByteOrder.nativeOrder());
-    netData =
-        ByteBuffer.allocateDirect(session.getPacketBufferSize()).order(ByteOrder.nativeOrder());
+    peerNetData = ByteBuffer.allocateDirect(session.getPacketBufferSize())
+        .order(ByteOrder.nativeOrder());
+    peerAppData = ByteBuffer.allocateDirect(session.getApplicationBufferSize())
+        .order(ByteOrder.nativeOrder());
+    netData = ByteBuffer.allocateDirect(session.getPacketBufferSize())
+        .order(ByteOrder.nativeOrder());
     peerAppData.position(peerAppData.limit());
     netData.position(netData.limit());
-    register(0);
-    engine.beginHandshake();
-    hsStatus = engine.getHandshakeStatus();
-    initialHandshake = true;
-    doHandshake();
+    try {
+      register(0);
+      engine.beginHandshake();
+      hsStatus = engine.getHandshakeStatus();
+      initialHandshake = true;
+      doHandshake();
+      future.complete(this);
+    } catch (IOException ex) {
+      future.completeExceptionally(ex);
+    }
+
+    return future;
   }
 
 }

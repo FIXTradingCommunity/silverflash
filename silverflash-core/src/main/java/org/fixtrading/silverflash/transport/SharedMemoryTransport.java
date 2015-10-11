@@ -30,9 +30,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.FileAttribute;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 
 import sun.misc.Unsafe;
 import sun.nio.ch.DirectBuffer;
@@ -418,18 +421,29 @@ public class SharedMemoryTransport implements Transport {
     return isOpen() && getReadChannel().isReadyToRead();
   }
 
-  public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
+  public CompletableFuture<SharedMemoryTransport> open(BufferSupplier buffers,
+      TransportConsumer consumer) {
+    CompletableFuture<SharedMemoryTransport> future = new CompletableFuture<SharedMemoryTransport>();
+
     if (isOpen.compareAndSet(false, true)) {
       Objects.requireNonNull(buffers);
       Objects.requireNonNull(consumer);
       this.buffers = buffers;
       this.consumer = consumer;
-      doOpen(isClient);
 
-      dispatcher.addTransport(this);
+      try {
+        doOpen(isClient);
+        dispatcher.addTransport(this);
+        connected();
+        future.complete(this);
+      } catch (IOException ex) {
+        future.completeExceptionally(ex);
+      }
 
-      connected();
+    } else {
+      future.complete(this);
     }
+    return future;
   }
 
   /*

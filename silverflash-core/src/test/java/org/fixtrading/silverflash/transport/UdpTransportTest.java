@@ -22,18 +22,23 @@ import static org.junit.Assert.*;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.Enumeration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
-import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
 import org.fixtrading.silverflash.transport.IOReactor;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 public class UdpTransportTest {
@@ -73,7 +78,7 @@ public class UdpTransportTest {
   private final InetSocketAddress clientAddress = new InetSocketAddress(
       InetAddress.getLoopbackAddress(), 7544);
 
-  private UdpTransport clientTransport;
+  private Transport clientTransport;
 
   private IOReactor iOReactor;
   final int messageCount = Byte.MAX_VALUE;
@@ -81,12 +86,10 @@ public class UdpTransportTest {
   private byte[][] messages;
   private final InetSocketAddress serverAddress = new InetSocketAddress(
       InetAddress.getLoopbackAddress(), 7543);
-  private UdpTransport serverTransport;
-  private CountDownLatch startSignal;
+  private Transport serverTransport;
 
   @Before
   public void setUp() throws Exception {
-    startSignal = new CountDownLatch(1);
     messages = new byte[messageCount][];
     for (int i = 0; i < messageCount; ++i) {
       messages[i] = new byte[i];
@@ -109,13 +112,14 @@ public class UdpTransportTest {
   }
 
   @Test
-  public void testSend() throws IOException, InterruptedException, ExecutionException {
+  public void unicast() throws IOException, InterruptedException, ExecutionException, TimeoutException {
 
     final TestReceiver serverReceiver = new TestReceiver();
     serverTransport = new UdpTransport(iOReactor.getSelector(), serverAddress, clientAddress);
+    BufferedTransportConsumer serverBuffers = new BufferedTransportConsumer(Executors.newFixedThreadPool(1), serverReceiver);
     serverTransport.open(
-        new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),
-        serverReceiver);
+        serverBuffers,
+        serverBuffers);
 
     clientTransport = new UdpTransport(iOReactor.getSelector(), clientAddress, serverAddress);
 
@@ -128,7 +132,7 @@ public class UdpTransportTest {
 
       @Override
       public void connected() {
-        startSignal.countDown();
+        
       }
 
       @Override
@@ -137,13 +141,73 @@ public class UdpTransportTest {
       }
     };
 
+    BufferedTransportConsumer clientBuffers = new BufferedTransportConsumer(Executors.newFixedThreadPool(1), clientReceiver);
+   
     clientTransport.open(
-        new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),
-        clientReceiver);
+        clientBuffers,
+        clientBuffers).get(1000L, TimeUnit.MILLISECONDS);
 
-    startSignal.await(1000L, TimeUnit.MILLISECONDS);
-    // client gets accepted signal before server transport is fully constructed
-    Thread.sleep(500L);
+    ByteBuffer buf = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
+    int totalBytesSent = 0;
+    for (int i = 0; i < messageCount; ++i) {
+      buf.clear();
+      buf.put(messages[i], 0, messages[i].length);
+      int bytesSent = clientTransport.write(buf);
+      assertEquals(messages[i].length, bytesSent);
+      totalBytesSent += bytesSent;
+    }
+
+    try {
+      Thread.sleep(500);
+    } catch (InterruptedException e) {
+
+    }
+    assertEquals(totalBytesSent, serverReceiver.getBytesReceived());
+  }
+ 
+  @Ignore
+  @Test
+  public void multicast() throws IOException, InterruptedException, ExecutionException, TimeoutException {
+    NetworkInterface networkInterface = getMulticastInterface();
+    if (networkInterface == null) {
+      fail("No available multicast interface");
+    }
+
+    InetAddress multicastAddress = InetAddress.getByName("224.2.2.3");
+    int port = 5555;
+ 
+    final TestReceiver serverReceiver = new TestReceiver(); 
+    serverTransport = new UdpMulticastTransport(iOReactor.getSelector(), multicastAddress, port, networkInterface);
+    BufferedTransportConsumer serverBuffers = new BufferedTransportConsumer(Executors.newFixedThreadPool(1), serverReceiver);
+    serverTransport.open(
+        serverBuffers,
+        serverBuffers);
+
+    clientTransport = new UdpMulticastTransport(iOReactor.getSelector(), multicastAddress, port, networkInterface);
+
+    TransportConsumer clientReceiver = new TransportConsumer() {
+
+      @Override
+      public void accept(ByteBuffer t) {
+
+      }
+
+      @Override
+      public void connected() {
+        
+      }
+
+      @Override
+      public void disconnected() {
+
+      }
+    };
+
+    BufferedTransportConsumer clientBuffers = new BufferedTransportConsumer(Executors.newFixedThreadPool(1), clientReceiver);
+   
+    clientTransport.open(
+        clientBuffers,
+        clientBuffers).get(1000L, TimeUnit.MILLISECONDS);
 
     ByteBuffer buf = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
     int totalBytesSent = 0;
@@ -163,69 +227,17 @@ public class UdpTransportTest {
     assertEquals(totalBytesSent, serverReceiver.getBytesReceived());
   }
 
-  @Test
-  public void testSendBuffers() throws IOException, InterruptedException, ExecutionException {
-
-    final TestReceiver serverReceiver = new TestReceiver();
-    serverTransport = new UdpTransport(iOReactor.getSelector(), serverAddress, clientAddress);
-    serverTransport.open(
-        new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),
-        serverReceiver);
-
-    clientTransport = new UdpTransport(iOReactor.getSelector(), clientAddress, serverAddress);
-
-    TransportConsumer clientReceiver = new TransportConsumer() {
-
-      @Override
-      public void accept(ByteBuffer t) {
-
+  private NetworkInterface getMulticastInterface() throws SocketException {
+    NetworkInterface networkInterface = null;
+    Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+    while (interfaces.hasMoreElements()) {
+      networkInterface = interfaces.nextElement();
+      if (networkInterface.supportsMulticast()) {
+        return networkInterface;
       }
-
-      @Override
-      public void connected() {
-        startSignal.countDown();
-      }
-
-      @Override
-      public void disconnected() {
-
-      }
-    };
-
-    clientTransport.open(
-        new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),
-        clientReceiver);
-
-    startSignal.await(1000L, TimeUnit.MILLISECONDS);
-    // client gets accepted signal before server transport is fully constructed
-    Thread.sleep(500L);
-
-    int batchSize = 5;
-    ByteBuffer[] bufs = new ByteBuffer[batchSize];
-    for (int i = 0; i < batchSize; ++i) {
-      bufs[i] = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
     }
-    long totalBytesSent = 0;
-
-    int expectedLength = 0;
-    for (int batch = 0; batch < messageCount / batchSize; ++batch) {
-      expectedLength = 0;
-      for (int i = 0; i < batchSize; ++i) {
-        bufs[i].clear();
-        int index = batch * batchSize + i;
-        bufs[i].put(messages[index], 0, messages[index].length);
-        expectedLength += messages[index].length;
-      }
-
-      long bytesSent = clientTransport.write(bufs);
-      assertEquals(expectedLength, bytesSent);
-      totalBytesSent += bytesSent;
-    }
-    try {
-      Thread.sleep(500);
-    } catch (InterruptedException e) {
-
-    }
-    assertEquals(totalBytesSent, serverReceiver.getBytesReceived());
+    
+    return null;
   }
+
 }

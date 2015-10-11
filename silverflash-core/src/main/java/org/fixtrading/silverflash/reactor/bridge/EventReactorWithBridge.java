@@ -25,11 +25,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
-
 import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.Receiver;
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.FrameSpliterator;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
 import org.fixtrading.silverflash.fixp.frame.FixpWithMessageLengthFrameSpliterator;
@@ -119,7 +119,7 @@ public class EventReactorWithBridge extends EventReactor<ByteBuffer> {
 
   };
 
-  private final Supplier<ByteBuffer> buffers = new SingleBufferSupplier(ByteBuffer.allocateDirect(
+  private final BufferSupplier buffers = new SingleBufferSupplier(ByteBuffer.allocateDirect(
       16 * 1024).order(ByteOrder.nativeOrder()));
 
   private ExceptionConsumer exceptionConsumer = ex -> {
@@ -214,16 +214,36 @@ public class EventReactorWithBridge extends EventReactor<ByteBuffer> {
    */
   @Override
   public CompletableFuture<? extends EventReactor<ByteBuffer>> open() {
-    CompletableFuture<EventReactorWithBridge> future = new CompletableFuture<>();
-    CompletableFuture<? extends EventReactor<ByteBuffer>> baseFuture = super.open();
+    CompletableFuture<? extends EventReactor<ByteBuffer>> reactorFuture = super.open();
+    CompletableFuture<? extends Transport> transportFuture = transport.open(buffers, transportConsumer);
+    Throwable ex1 = null;
     try {
-      baseFuture.get();
-      transport.open(buffers, transportConsumer);
-      future.complete(this);
-    } catch (InterruptedException | ExecutionException | IOException ex) {
-      future.completeExceptionally(ex);
+      reactorFuture.get();
+    } catch (InterruptedException e1) {
+      ex1 = e1;
+    } catch (ExecutionException e1) {
+      ex1 = e1.getCause();
     }
-    return future;
+    Throwable ex2 = null;
+    try {
+      transportFuture.get();
+    } catch (InterruptedException e1) {
+      ex2 = e1;
+    } catch (ExecutionException e1) {
+      ex2 = e1.getCause();
+    }
+
+    CompletableFuture<EventReactor<ByteBuffer>> combined = new CompletableFuture<EventReactor<ByteBuffer>>();
+    if (reactorFuture.isCompletedExceptionally()) {
+      combined.completeExceptionally(ex1);
+      close();
+    } else if (transportFuture.isCompletedExceptionally()) {
+      combined.completeExceptionally(ex2);
+      close();
+    } else {
+      combined.complete(this);
+    }
+    return combined;
   }
 
   public void stopForwarding(Topic topic) {

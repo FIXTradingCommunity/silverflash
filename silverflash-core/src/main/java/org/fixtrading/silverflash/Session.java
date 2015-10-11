@@ -17,14 +17,15 @@
 
 package org.fixtrading.silverflash;
 
-import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * An instance of a session layer to exchange messages between peers (OSI layer 5)
  * 
  * @author Don Mendelson
  * 
- * @param T identifier type
+ * @param T
+ *          identifier type
  */
 public interface Session<T> extends Sender, AutoCloseable {
 
@@ -34,10 +35,11 @@ public interface Session<T> extends Sender, AutoCloseable {
   T getSessionId();
 
   /**
-   * Initialize this Session. Open a Transport and acquire any other needed resources.
+   * Initialize this Session. Acquires any needed resources asynchronously.
    * 
-   * @throws IOException if an IO error occurs
+   * @return a future that triggers action when successfully completed or when an exception occurs.
+   *         Possible exceptions include IOException.
    */
-  void open() throws IOException;
+  CompletableFuture<? extends Session<T>> open();
 
 }

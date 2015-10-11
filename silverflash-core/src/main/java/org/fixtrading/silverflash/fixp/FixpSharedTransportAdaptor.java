@@ -22,11 +22,14 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import org.fixtrading.silverflash.MessageConsumer;
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
 import org.fixtrading.silverflash.fixp.frame.FixpWithMessageLengthFrameSpliterator;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
@@ -34,8 +37,8 @@ import org.fixtrading.silverflash.fixp.messages.MessageSessionIdentifier;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.transport.IdentifiableTransportConsumer;
 import org.fixtrading.silverflash.transport.SharedTransportDecorator;
+import org.fixtrading.silverflash.transport.Transport;
 import org.fixtrading.silverflash.transport.TransportConsumer;
-import org.fixtrading.silverflash.transport.SharedTransportDecorator.Builder;
 
 /**
  * Wraps a shared Transport for multiple sessions
@@ -102,22 +105,19 @@ public class FixpSharedTransportAdaptor extends SharedTransportDecorator<UUID> {
 
     @SuppressWarnings("unchecked")
     public void accept(UUID sessionId) {
-      FixpSession session =
-          FixpSession
-              .builder()
-              .withReactor(reactor)
-              .withTransport(FixpSharedTransportAdaptor.this, true)
-              .withBufferSupplier(
-                  new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(
-                      ByteOrder.nativeOrder()))).withMessageConsumer(consumerSupplier.get())
-              .withOutboundFlow(flowType).withSessionId(sessionId).asServer().build();
+      FixpSession session = FixpSession.builder().withReactor(reactor)
+          .withTransport(FixpSharedTransportAdaptor.this, true)
+          .withBufferSupplier(new SingleBufferSupplier(
+              ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
+          .withMessageConsumer(consumerSupplier.get()).withOutboundFlow(flowType)
+          .withSessionId(sessionId).asServer().build();
 
-      try {
-        session.open();
-      } catch (IOException e) {
-        exceptionConsumer.accept(e);
-      }
-
+      session.open().handle((s, error) -> {
+        if (error instanceof Exception) {
+          exceptionConsumer.accept((Exception) error);
+        }
+        return s;
+      });
     }
 
   };
@@ -150,7 +150,7 @@ public class FixpSharedTransportAdaptor extends SharedTransportDecorator<UUID> {
             try {
               open(wrapper.getBuffers(), consumer, id);
               consumer.accept(buffer);
-            } catch (IOException e) {
+            } catch (IOException | InterruptedException | ExecutionException e) {
               exceptionConsumer.accept(e);
             }
           } else {
@@ -175,21 +175,15 @@ public class FixpSharedTransportAdaptor extends SharedTransportDecorator<UUID> {
     }
   }
 
-  /*
-   * (non-Javadoc)
-   * 
-   * @see org.fixtrading.silverflash.transport.SharedTransportDecorator#open(java.util.function
-   * .Supplier, org.fixtrading.silverflash.transport.IdentifiableTransportConsumer)
-   */
   @Override
-  public void open(Supplier<ByteBuffer> buffers, IdentifiableTransportConsumer<UUID> consumer)
-      throws IOException {
+  public CompletableFuture<? extends Transport> open(BufferSupplier buffers, IdentifiableTransportConsumer<UUID> consumer) {
     if (consumer.getSessionId().equals(SessionId.EMPTY)) {
       uninitialized.add(new ConsumerWrapper(buffers, consumer));
-      openUnderlyingTransport();
+      CompletableFuture<? extends Transport> future = openUnderlyingTransport();
       consumer.connected();
+      return future;
     } else {
-      super.open(buffers, consumer);
+      return super.open(buffers, consumer);
     }
   }
 

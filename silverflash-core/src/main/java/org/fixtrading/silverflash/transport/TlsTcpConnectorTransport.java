@@ -26,9 +26,11 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.security.KeyStore;
 import java.util.Objects;
-import java.util.function.Supplier;
+import java.util.concurrent.CompletableFuture;
 
 import javax.net.ssl.SSLSession;
+
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 
 /**
  * A client transport with TLS over TCP
@@ -39,16 +41,21 @@ import javax.net.ssl.SSLSession;
 public class TlsTcpConnectorTransport extends AbstractTlsChannel implements Connector {
 
   private final InetSocketAddress remoteAddress;
-
+  private CompletableFuture<TlsTcpConnectorTransport> future;
 
   /**
    * Create a client transport with TLS over TCP
    * 
-   * @param selector event demultiplexor
-   * @param remoteAddress address to connect to
-   * @param keystore key store
-   * @param truststore trusted keys
-   * @param storePassphrase passpharse for key stores
+   * @param selector
+   *          event demultiplexor
+   * @param remoteAddress
+   *          address to connect to
+   * @param keystore
+   *          key store
+   * @param truststore
+   *          trusted keys
+   * @param storePassphrase
+   *          passpharse for key stores
    */
   public TlsTcpConnectorTransport(Selector selector, InetSocketAddress remoteAddress,
       KeyStore keystore, KeyStore truststore, char[] storePassphrase) {
@@ -57,27 +64,36 @@ public class TlsTcpConnectorTransport extends AbstractTlsChannel implements Conn
     this.remoteAddress = remoteAddress;
   }
 
-  public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
+  public CompletableFuture<? extends Transport> open(BufferSupplier buffers,
+      TransportConsumer consumer) {
     Objects.requireNonNull(buffers);
     Objects.requireNonNull(consumer);
     this.buffers = buffers;
     this.consumer = consumer;
-    this.socketChannel = SocketChannel.open();
-    register(SelectionKey.OP_CONNECT);
-    this.socketChannel.connect(remoteAddress);
+
+    future = new CompletableFuture<TlsTcpConnectorTransport>();
+
+    try {
+      this.socketChannel = SocketChannel.open();
+      register(SelectionKey.OP_CONNECT);
+      this.socketChannel.connect(remoteAddress);
+    } catch (IOException ex) {
+      future.completeExceptionally(ex);
+    }
+
+    return future;
   }
 
   public void readyToConnect() {
     try {
       socketChannel.finishConnect();
       SSLSession session = engine.getSession();
-      peerNetData =
-          ByteBuffer.allocateDirect(session.getPacketBufferSize()).order(ByteOrder.nativeOrder());
-      peerAppData =
-          ByteBuffer.allocateDirect(session.getApplicationBufferSize()).order(
-              ByteOrder.nativeOrder());
-      netData =
-          ByteBuffer.allocateDirect(session.getPacketBufferSize()).order(ByteOrder.nativeOrder());
+      peerNetData = ByteBuffer.allocateDirect(session.getPacketBufferSize())
+          .order(ByteOrder.nativeOrder());
+      peerAppData = ByteBuffer.allocateDirect(session.getApplicationBufferSize())
+          .order(ByteOrder.nativeOrder());
+      netData = ByteBuffer.allocateDirect(session.getPacketBufferSize())
+          .order(ByteOrder.nativeOrder());
       peerAppData.position(peerAppData.limit());
       netData.position(netData.limit());
       removeInterest(SelectionKey.OP_CONNECT);
@@ -85,12 +101,14 @@ public class TlsTcpConnectorTransport extends AbstractTlsChannel implements Conn
       hsStatus = engine.getHandshakeStatus();
       initialHandshake = true;
       doHandshake();
-
-    } catch (IOException e) {
-      consumer.disconnected();
-      e.printStackTrace();
+      future.complete(this);
+      consumer.connected();
+    } catch (IOException ex) {
+      future.completeExceptionally(ex);
+      try {
+        socketChannel.close();
+      } catch (IOException e) {
+      }
     }
   }
-
-
 }

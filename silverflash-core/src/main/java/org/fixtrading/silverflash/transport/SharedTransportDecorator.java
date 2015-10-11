@@ -21,8 +21,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -30,8 +31,8 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.fixtrading.silverflash.ExceptionConsumer;
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.FrameSpliterator;
-import org.fixtrading.silverflash.fixp.messages.MessageSessionIdentifier;
 
 /**
  * Allows multiple sessions to share a Transport.
@@ -61,7 +62,7 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
   @SuppressWarnings("unchecked")
   public static class Builder<T, U extends SharedTransportDecorator<T>, B extends Builder<T, U, B>> {
 
-    private Supplier<ByteBuffer> buffers;
+    private BufferSupplier buffers;
     private ExceptionConsumer exceptionHandler;
     private FrameSpliterator frameSpliter;
     private Function<ByteBuffer, T> messageIdentifier;
@@ -83,7 +84,7 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
      * @param buffers a buffer Supplier
      * @return this Builder
      */
-    public B withBufferSupplier(Supplier<ByteBuffer> buffers) {
+    public B withBufferSupplier(BufferSupplier buffers) {
       this.buffers = buffers;
       return (B) this;
     }
@@ -168,7 +169,7 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
   }
 
 
-  private final Supplier<ByteBuffer> buffers;
+  private final BufferSupplier buffers;
 
   private final Map<T, ConsumerWrapper> consumerMap = new ConcurrentHashMap<>();
   private final AtomicBoolean criticalSection = new AtomicBoolean();
@@ -290,40 +291,34 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
     return isOpen();
   }
   
-  /*
-   * (non-Javadoc)
-   * 
-   * @see org.fixtrading.silverflash.transport.Transport#open(java.util.function.Supplier,
-   * org.fixtrading.silverflash.transport.TransportConsumer)
-   */
-  public void open(Supplier<ByteBuffer> buffers, IdentifiableTransportConsumer<T> consumer)
-      throws IOException {
+  public CompletableFuture<? extends Transport> open(BufferSupplier buffers, IdentifiableTransportConsumer<T> consumer) {
     final T sessionId = consumer.getSessionId();
     consumerMap.put(sessionId, new ConsumerWrapper(buffers, consumer));
-    openUnderlyingTransport();
+    CompletableFuture<? extends Transport> future = openUnderlyingTransport();
     consumer.connected();
+    return future;
   }
 
-  /*
-   * (non-Javadoc)
-   * 
-   * @see org.fixtrading.silverflash.transport.Transport#open(java.util.function.Supplier,
-   * org.fixtrading.silverflash.transport.TransportConsumer)
-   */
-  @SuppressWarnings("unchecked")
-  public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
+   public CompletableFuture<? extends Transport> open(BufferSupplier buffers, TransportConsumer consumer) {
     if (consumer instanceof IdentifiableTransportConsumer<?>) {
-      open(buffers, (IdentifiableTransportConsumer<T>) consumer);
+      return open(buffers, (IdentifiableTransportConsumer<T>) consumer);
+    } else {
+      CompletableFuture<Transport> future = new CompletableFuture<Transport>();
+      future.completeExceptionally(new IllegalArgumentException("Not instancof IdentifiableTransportConsumer"));
+      return future;
     }
-
   }
 
   /**
    * @throws IOException if an error occurs opening the underlying transport
+   * @throws ExecutionException 
+   * @throws InterruptedException 
    */
-  public void openUnderlyingTransport() throws IOException {
+  public CompletableFuture<? extends Transport> openUnderlyingTransport() {
     if (openCount.getAndIncrement() == 0) {
-      transport.open(this.buffers, this);
+      return transport.open(this.buffers, this);
+    } else {
+      return CompletableFuture.completedFuture(transport);
     }
   }
 
@@ -391,7 +386,7 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
   }
 
   protected void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer, T sessionId)
-      throws IOException {
+      throws IOException, InterruptedException, ExecutionException {
     boolean firstOpen = consumerMap.isEmpty();
     consumerMap.put(sessionId, new ConsumerWrapper(buffers, consumer));
     if (firstOpen) {

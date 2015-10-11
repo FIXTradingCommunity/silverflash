@@ -175,10 +175,12 @@ public class TlsTcpSessionTest {
               .withClientCredentials(userCredentials.getBytes())
               .withOutboundKeepaliveInterval(keepAliveInterval).build();
 
-      SessionReadyFuture future = new SessionReadyFuture(sessionId, reactor2);
-      clientSession.open();
-      future.get(3000, TimeUnit.MILLISECONDS);
-
+      SessionReadyFuture readyFuture = new SessionReadyFuture(sessionId, reactor2);
+      // Completes when transport is established or throws if IO error
+      clientSession.open().get(1000, TimeUnit.MILLISECONDS);
+      // Completes when FIXP session is established
+      readyFuture.get(3000, TimeUnit.MILLISECONDS);
+      
       ByteBuffer buf = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
       int bytesSent = 0;
       for (int i = 0; i < messageCount; ++i) {
@@ -195,9 +197,9 @@ public class TlsTcpSessionTest {
       }
       assertEquals(bytesSent, serverReceiver.getBytesReceived());
 
-      SessionTerminatedFuture future2 = new SessionTerminatedFuture(sessionId, reactor2);
+      SessionTerminatedFuture terminatedFuture = new SessionTerminatedFuture(sessionId, reactor2);
       clientSession.close();
-      future.get(1000, TimeUnit.MILLISECONDS);
+      terminatedFuture.get(1000, TimeUnit.MILLISECONDS);
     }
   }
 

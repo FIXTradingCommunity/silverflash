@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.concurrent.ExecutionException;
 
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
 import org.fixtrading.silverflash.transport.IOReactor;
@@ -96,7 +97,7 @@ public class PipeTransportTest {
   }
 
   @Test
-  public void testSend() throws IOException {
+  public void testSend() throws IOException, InterruptedException, ExecutionException {
     serverTransport = memoryTransport.getServerTransport();
     TestReceiver serverReceiver = new TestReceiver();
     serverTransport.open(

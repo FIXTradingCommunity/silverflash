@@ -18,9 +18,8 @@ package org.fixtrading.silverflash.examples;
 
 import java.nio.ByteBuffer;
 import java.util.UUID;
-import java.util.function.Supplier;
-
 import org.fixtrading.silverflash.MessageConsumer;
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.fixp.FixpSession;
 import org.fixtrading.silverflash.fixp.Sessions;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
@@ -89,7 +88,7 @@ public class FixpSessionFactory extends Sessions {
    * @return a new FixpSession
    */
   public FixpSession createClientSession(byte[] credentials, Transport transport,
-      Supplier<ByteBuffer> buffers, MessageConsumer<UUID> streamReceiver, FlowType outboundFlow) {
+      BufferSupplier buffers, MessageConsumer<UUID> streamReceiver, FlowType outboundFlow) {
     FixpSession session;
     if (outboundFlow == FlowType.RECOVERABLE) {
       session =
@@ -121,7 +120,7 @@ public class FixpSessionFactory extends Sessions {
    * @param outboundFlow type of the outbound message flow
    * @return a new FixpSession
    */
-  public FixpSession createServerSession(Transport transport, Supplier<ByteBuffer> buffers,
+  public FixpSession createServerSession(Transport transport, BufferSupplier buffers,
       MessageConsumer<UUID> streamReceiver, FlowType outboundFlow) {
     FixpSession session;
     if (outboundFlow == FlowType.RECOVERABLE) {

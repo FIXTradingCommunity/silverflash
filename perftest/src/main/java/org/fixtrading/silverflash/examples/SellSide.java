@@ -24,6 +24,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -83,7 +86,7 @@ public class SellSide {
       return receivers;
     }
   }
-  
+
   private class ServerListener implements MessageConsumer<UUID> {
 
     class OrderStruct {
@@ -384,10 +387,11 @@ public class SellSide {
             consumerSupplier.get(), FlowType.IDEMPOTENT);
 
         try {
-          serverSession.open();
-        } catch (IOException e) {
+          serverSession.open().get(1000, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException | ExecutionException | TimeoutException e) {
           exceptionConsumer.accept(e);
         }
+
         return serverSession;
       };
 
@@ -419,7 +423,8 @@ public class SellSide {
     Transport transport;
     switch (protocol) {
       case PROTOCOL_SHARED_MEMORY:
-        transport = new SharedMemoryTransport(false, true, 1, new Dispatcher(engine.getThreadFactory()));
+        transport =
+            new SharedMemoryTransport(false, true, 1, new Dispatcher(engine.getThreadFactory()));
         break;
       default:
         throw new IOException("Unsupported protocol");

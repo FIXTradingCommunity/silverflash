@@ -19,13 +19,13 @@ package org.fixtrading.silverflash.transport;
 
 import java.io.IOException;
 import java.net.SocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Objects;
-import java.util.concurrent.ThreadFactory;
-import java.util.function.Supplier;
+import java.util.concurrent.CompletableFuture;
+
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 
 /**
  * A client TCP transport
@@ -36,6 +36,7 @@ import java.util.function.Supplier;
 public class TcpConnectorTransport extends AbstractTcpChannel implements Connector {
 
   private final SocketAddress remoteAddress;
+  private CompletableFuture<TcpConnectorTransport> future;
 
 
   /**
@@ -62,44 +63,42 @@ public class TcpConnectorTransport extends AbstractTcpChannel implements Connect
     this.remoteAddress = remoteAddress;
   }
 
-
-  /*
-   * (non-Javadoc)
-   * 
-   * @see org.fixtrading.silverflash.transport.Transport#open(java.util.function.Supplier,
-   * org.fixtrading.silverflash.transport.TransportConsumer)
-   */
-  public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
+  public CompletableFuture<? extends Transport> open(BufferSupplier buffers,
+      TransportConsumer consumer) {
     Objects.requireNonNull(buffers);
     Objects.requireNonNull(consumer);
     this.buffers = buffers;
     this.consumer = consumer;
-    this.socketChannel = SocketChannel.open();
 
-    if (selector != null) {
-      register(SelectionKey.OP_CONNECT);
+    future = new CompletableFuture<TcpConnectorTransport>();
+
+    try {
+      this.socketChannel = SocketChannel.open();
+      if (selector != null) {
+        register(SelectionKey.OP_CONNECT);
+      }
+
+      this.socketChannel.connect(remoteAddress);
+
+      if (dispatcher != null) {
+        dispatcher.addTransport(this);
+      }
+
+    } catch (IOException ex) {
+      future.completeExceptionally(ex);
     }
 
-    this.socketChannel.connect(remoteAddress);
-
-    if (dispatcher != null) {
-      dispatcher.addTransport(this);
-    }
+    return future;
   }
 
-  /*
-   * (non-Javadoc)
-   * 
-   * @see org.fixtrading.silverflash.transport.Connector#connect()
-   */
   public void readyToConnect() {
     try {
       socketChannel.finishConnect();
       socketChannel.keyFor(selector).interestOps(SelectionKey.OP_READ);
+      future.complete(this);
       consumer.connected();
-    } catch (IOException e) {
-      consumer.disconnected();
-      e.printStackTrace();
+    } catch (IOException ex) {
+      future.completeExceptionally(ex);
     }
   }
 

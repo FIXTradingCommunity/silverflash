@@ -14,41 +14,23 @@
  * limitations under the License.
  *
  */
-
 package org.fixtrading.silverflash.buffer;
 
 import java.nio.ByteBuffer;
+import java.util.function.Supplier;
 
 /**
- * A Supplier of message buffer that uses a single, fixed ByteBuffer
+ * A Supplier of buffers that requires populated buffers to be committed
  * 
- * @author Don Mendelson
+ * Not guaranteed to support more than one uncommitted buffer.
+ * @author Donald
  *
  */
-public class SingleBufferSupplier implements BufferSupplier {
-
-  private final ByteBuffer buffer;
+public interface BufferSupplier extends Supplier<ByteBuffer> {
 
   /**
-   * Constructor
-   * 
-   * @param buffer an allocated buffer
+   * Complete storage of the last supplied buffer
    */
-  public SingleBufferSupplier(ByteBuffer buffer) {
-    this.buffer = buffer;
-  }
-
-  @Override
-  public ByteBuffer get() {
-    return buffer;
-  }
-
-  /* (non-Javadoc)
-   * @see org.fixtrading.silverflash.buffer.BufferSupplier#commit()
-   */
-  @Override
-  public void commit() {
-    
-  }
-
+  void commit();
+  
 }

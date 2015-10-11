@@ -130,8 +130,8 @@ public class TcpTransportBenchmark {
       try {
         transport.open(
             new SingleBufferSupplier(ByteBuffer.allocateDirect(bufferSize * batchSize * 64).order(
-                ByteOrder.nativeOrder())), new Reflector(transport));
-      } catch (IOException e) {
+                ByteOrder.nativeOrder())), new Reflector(transport)).get();
+      } catch (InterruptedException | ExecutionException e) {
         throw new RuntimeException(e);
       }
       return transport;

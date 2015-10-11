@@ -19,7 +19,9 @@ package org.fixtrading.silverflash.transport;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.function.Supplier;
+import java.util.concurrent.CompletableFuture;
+
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 
 /**
  * A channel to send and receive messages (OSI layer 4)
@@ -30,13 +32,14 @@ import java.util.function.Supplier;
 public interface Transport {
 
   /**
-   * Open this Transport
+   * Open this Transport asynchronously
    * 
    * @param buffers Supplier of buffers to hold received messages
    * @param consumer message receiver and event handler
-   * @throws IOException if the Transport cannot be opened
+   * @return a future that triggers action when successfully completed or when an exception 
+   * occurs. Possible exceptions include IOException.
    */
-  void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException;
+  CompletableFuture<? extends Transport> open(BufferSupplier buffers, TransportConsumer consumer);
 
   /**
    * Close this Transport

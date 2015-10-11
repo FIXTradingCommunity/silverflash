@@ -19,8 +19,8 @@ package org.fixtrading.silverflash.transport;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.function.Supplier;
-
+import java.util.concurrent.CompletableFuture;
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.transport.Transport;
 import org.fixtrading.silverflash.transport.TransportConsumer;
 
@@ -47,8 +47,9 @@ public class TransportDecorator implements Transport {
     return isFifo;
   }
 
-  public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
-    component.open(buffers, consumer);
+  public CompletableFuture<? extends Transport> open(BufferSupplier buffers,
+      TransportConsumer consumer) {
+    return component.open(buffers, consumer);
   }
 
   public int read() throws IOException {

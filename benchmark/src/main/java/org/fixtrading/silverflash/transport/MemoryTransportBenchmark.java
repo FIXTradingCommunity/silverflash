@@ -20,8 +20,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
-import java.util.function.Supplier;
+import java.util.concurrent.ExecutionException;
 
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
 import org.fixtrading.silverflash.transport.SharedMemoryTransport;
 import org.fixtrading.silverflash.transport.Transport;
@@ -96,10 +97,10 @@ public class MemoryTransportBenchmark {
   @Param({"128", "256", "1024"})
   public int bufferSize;
 
-  private Supplier<ByteBuffer> clientBuffers;
+  private BufferSupplier clientBuffers;
   private Transport clientTransport;
   private byte[] message;
-  private Supplier<ByteBuffer> serverBuffers;
+  private BufferSupplier serverBuffers;
   private Transport serverTransport;
   private ByteBuffer src;
 
@@ -114,7 +115,7 @@ public class MemoryTransportBenchmark {
   }
 
   @Setup
-  public void initTestEnvironment() throws IOException {
+  public void initTestEnvironment() throws IOException, InterruptedException, ExecutionException {
     threadFactory = new AffinityThreadFactory(true, true, "benchmark");
     serverBuffers =
         new SingleBufferSupplier(ByteBuffer.allocate(bufferSize).order(ByteOrder.nativeOrder()));

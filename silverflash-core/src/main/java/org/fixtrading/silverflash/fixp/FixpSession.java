@@ -29,7 +29,8 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.function.Supplier;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.MessageConsumer;
@@ -37,6 +38,7 @@ import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.RecoverableSender;
 import org.fixtrading.silverflash.Sequenced;
 import org.fixtrading.silverflash.Session;
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.FrameSpliterator;
 import org.fixtrading.silverflash.fixp.flow.ClientSessionEstablisher;
 import org.fixtrading.silverflash.fixp.flow.FlowReceiver;
@@ -83,7 +85,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
   @SuppressWarnings("unchecked")
   public static class Builder<T extends FixpSession, B extends Builder<T, B>> {
 
-    private Supplier<ByteBuffer> buffers;
+    private BufferSupplier buffers;
     private byte[] credentials = null;
     private ExceptionConsumer exceptionHandler;
     private FrameSpliterator frameSpliter = null;
@@ -122,7 +124,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
      * @param buffers a buffer Supplier
      * @return this Builder
      */
-    public B withBufferSupplier(Supplier<ByteBuffer> buffers) {
+    public B withBufferSupplier(BufferSupplier buffers) {
       this.buffers = buffers;
       return (B) this;
     }
@@ -276,7 +278,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
   }
 
   private Subscription applicationMessageToSendSubscription;
-  private final Supplier<ByteBuffer> buffers;
+  private final BufferSupplier buffers;
   private Subscription establishedSubscription;
   private final Establisher establisher;
 
@@ -510,8 +512,16 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
   }
 
   @Override
-  public void open() throws IOException {
-    getTransport().open(getBuffers(), getTransportConsumer());
+  public CompletableFuture<FixpSession> open() {
+    CompletableFuture<FixpSession> future = new CompletableFuture<FixpSession>();
+    getTransport().open(getBuffers(), getTransportConsumer()).whenComplete((transport, error) -> {
+      if (error == null) {
+        future.complete(this);
+      } else {
+        future.completeExceptionally(error);
+      }
+    });
+    return future;
   }
 
   public void resend(ByteBuffer message, long seqNo, long requestTimestamp) throws IOException {
@@ -643,7 +653,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     }
   }
 
-  protected Supplier<ByteBuffer> getBuffers() {
+  protected BufferSupplier getBuffers() {
     return buffers;
   }
 
