@@ -110,6 +110,10 @@ public final class SessionEventTopics {
      * A server session was negotiated. This event reports the UUID.
      */
     SERVER_NEGOTIATED,
+    /**
+     * A FIXP Topic for multicast was received
+     */
+    MULTICAST_TOPIC
   }
 
   /**
@@ -151,6 +155,16 @@ public final class SessionEventTopics {
     return Topics.getTopic(Integer.toString(hashCode), sessionEventType.name());
   }
 
+  /**
+   * Returns a Topic by event type for a session that has not yet been assigned a {@code SessionId}
+   * 
+   * @param sessionEventType type of event
+   * @param topicName a unique topic name
+   * @return a Topic
+   */
+  public static Topic getTopic(SessionEventType sessionEventType, String topicName) {
+    return Topics.getTopic(topicName, sessionEventType.name());
+  }
   /**
    * Returns a Topic by session and event type
    * 

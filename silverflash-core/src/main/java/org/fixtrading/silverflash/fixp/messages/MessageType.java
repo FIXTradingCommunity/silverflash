@@ -88,7 +88,11 @@ public enum MessageType {
   /**
    * Notification that an application message has not been processed
    */
-  NOT_APPLIED(0xfff0);
+  NOT_APPLIED(0xfff0),
+  /**
+   * Notification that an application message has not been processed
+   */
+  TOPIC(0xffef);
 
   private final int code;
 
@@ -134,6 +138,8 @@ public enum MessageType {
         return APPLIED;
       case 0xfff0:
         return NOT_APPLIED;
+      case 0xffef:
+        return TOPIC;
       default:
         throw new RuntimeException("Internal error");
     }

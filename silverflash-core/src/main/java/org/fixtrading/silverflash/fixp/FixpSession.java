@@ -20,6 +20,7 @@ package org.fixtrading.silverflash.fixp;
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.FromSessionEventType.SESSION_READY;
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.FromSessionEventType.SESSION_SUSPENDED;
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.CLIENT_ESTABLISHED;
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.MULTICAST_TOPIC;
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.PEER_TERMINATED;
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.SERVER_ESTABLISHED;
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.SERVER_NEGOTIATED;
@@ -30,8 +31,6 @@ import java.nio.ByteBuffer;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-
 import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Receiver;
@@ -45,6 +44,8 @@ import org.fixtrading.silverflash.fixp.flow.FlowReceiver;
 import org.fixtrading.silverflash.fixp.flow.FlowSender;
 import org.fixtrading.silverflash.fixp.flow.IdempotentFlowReceiver;
 import org.fixtrading.silverflash.fixp.flow.IdempotentFlowSender;
+import org.fixtrading.silverflash.fixp.flow.MulticastConsumerEstablisher;
+import org.fixtrading.silverflash.fixp.flow.MulticastProducerEstablisher;
 import org.fixtrading.silverflash.fixp.flow.MultiplexSequencer;
 import org.fixtrading.silverflash.fixp.flow.MutableSequence;
 import org.fixtrading.silverflash.fixp.flow.NoneReceiver;
@@ -79,8 +80,10 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
    * 
    * If FixpSession is subclassed, then also subclass this Builder to add additional attributes
    *
-   * @param <T> type of the object to build
-   * @param <B> type of the builder
+   * @param <T>
+   *          type of the object to build
+   * @param <B>
+   *          type of the builder
    */
   @SuppressWarnings("unchecked")
   public static class Builder<T extends FixpSession, B extends Builder<T, B>> {
@@ -90,22 +93,53 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     private ExceptionConsumer exceptionHandler;
     private FrameSpliterator frameSpliter = null;
     private boolean isMultiplexedTransport = false;
-    private boolean isServer = false;
     private MessageConsumer<UUID> messageConsumer = null;
     private FlowType outboundFlow = FlowType.IDEMPOTENT;
     private int outboundKeepaliveInterval = 10000;
     private EventReactor<ByteBuffer> reactor = null;
+    private Role role = Role.CLIENT;
     private UUID sessionId = SessionId.EMPTY;
     private MessageStore store = null;
+    private String topic;
     private Transport transport = null;
 
     /**
-     * This session will play the server role
+     * This session will play the client role in a point-to-point session (default)
+     * 
+     * @return this Builder
+     */
+    public B asClient() {
+      this.role = Role.CLIENT;
+      return (B) this;
+    }
+
+    /**
+     * This session will play the consumer role in a multicast session
+     * 
+     * @return this Builder
+     */
+    public B asMulticastConsumer() {
+      this.role = Role.MULTICAST_CONSUMER;
+      return (B) this;
+    }
+
+    /**
+     * This session will play the publisher role in a multicast session
+     * 
+     * @return this Builder
+     */
+    public B asMulticastPublisher() {
+      this.role = Role.MULTICAST_PRODUCER;
+      return (B) this;
+    }
+
+    /**
+     * This session will play the server role in a point-to-point session
      * 
      * @return this Builder
      */
     public B asServer() {
-      this.isServer = true;
+      this.role = Role.SERVER;
       return (B) this;
     }
 
@@ -121,7 +155,8 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     /**
      * Provide a buffer Supplier for received messages
      * 
-     * @param buffers a buffer Supplier
+     * @param buffers
+     *          a buffer Supplier
      * @return this Builder
      */
     public B withBufferSupplier(BufferSupplier buffers) {
@@ -132,7 +167,8 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     /**
      * Provide client identification
      * 
-     * @param credentials business entity identification
+     * @param credentials
+     *          business entity identification
      * @return this Builder
      */
     public B withClientCredentials(byte[] credentials) {
@@ -143,7 +179,8 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     /**
      * Adds an exception handler
      * 
-     * @param exceptionHandler a handler for exceptions thrown from an inner context
+     * @param exceptionHandler
+     *          a handler for exceptions thrown from an inner context
      * @return this Builder
      */
     public B withExceptionConsumer(ExceptionConsumer exceptionHandler) {
@@ -153,7 +190,8 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
 
     /**
      * 
-     * @param messageConsumer application layer consumer of messages
+     * @param messageConsumer
+     *          application layer consumer of messages
      * @return this Builder
      */
     public B withMessageConsumer(MessageConsumer<UUID> messageConsumer) {
@@ -164,7 +202,8 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     /**
      * Provide a message framer. If not provided, a default implementation is used.
      * 
-     * @param frameSpliter the frameSpliter to set
+     * @param frameSpliter
+     *          the frameSpliter to set
      * @return this Builder
      */
     public B withMessageFramer(FrameSpliterator frameSpliter) {
@@ -175,7 +214,8 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     /**
      * Provide a MessageStore for recoverable flows
      * 
-     * @param store to persist messages
+     * @param store
+     *          to persist messages
      * @return this Builder
      */
     public B withMessageStore(MessageStore store) {
@@ -187,7 +227,8 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     /**
      * Set outbound flow type
      * 
-     * @param outboundFlow type of flow for outbound messages
+     * @param outboundFlow
+     *          type of flow for outbound messages
      * @return this Builder
      */
     public B withOutboundFlow(FlowType outboundFlow) {
@@ -198,7 +239,8 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     /**
      * Set heartbeat interval for the outbound flow. If not set, a default value is used.
      * 
-     * @param outboundKeepaliveInterval interval in milliseconds
+     * @param outboundKeepaliveInterval
+     *          interval in milliseconds
      * @return this Builder
      */
     public B withOutboundKeepaliveInterval(int outboundKeepaliveInterval) {
@@ -209,7 +251,8 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     /**
      * Set an EventReactor to use for asynchrous events
      * 
-     * @param reactor an event reactor
+     * @param reactor
+     *          an event reactor
      * @return this Builder
      */
     public B withReactor(EventReactor<ByteBuffer> reactor) {
@@ -220,7 +263,8 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     /**
      * Provide a session identifier
      * 
-     * @param sessionId a unique number
+     * @param sessionId
+     *          a unique number
      * @return this Builder
      */
     public B withSessionId(UUID sessionId) {
@@ -229,9 +273,22 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     }
 
     /**
+     * Provide category of application messages for multicast
+     * 
+     * @param topic
+     *          category of application messages
+     * @return this Builder
+     */
+    public B withTopic(String topic) {
+      this.topic = topic;
+      return (B) this;
+    }
+
+    /**
      * Provide a non-multiplexed Transport to use for message exchange
      * 
-     * @param transport a Transport
+     * @param transport
+     *          a Transport
      * @return this Builder
      */
     public B withTransport(Transport transport) {
@@ -241,8 +298,10 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     /**
      * Provide a Transport to use for message exchange
      * 
-     * @param transport a Transport
-     * @param isMultiplexed set {@code true} if the transport is multiplexed with other sessions
+     * @param transport
+     *          a Transport
+     * @param isMultiplexed
+     *          set {@code true} if the transport is multiplexed with other sessions
      * @return this Builder
      */
     public B withTransport(Transport transport, boolean isMultiplexed) {
@@ -270,6 +329,10 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
       reactor.post(readyTopic, buffer);
       // System.out.println("FixpSession established");
     }
+  }
+
+  private enum Role {
+    CLIENT, MULTICAST_CONSUMER, MULTICAST_PRODUCER, SERVER
   }
 
   @SuppressWarnings("rawtypes")
@@ -346,46 +409,46 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
 
   private final Transport transport;
 
-  private final IdentifiableTransportConsumer<UUID> transportConsumer =
-      new IdentifiableTransportConsumer<UUID>() {
+  private final IdentifiableTransportConsumer<UUID> transportConsumer = new IdentifiableTransportConsumer<UUID>() {
 
-        @Override
-        public void accept(ByteBuffer buffer) {
-          frameSpliter.wrap(buffer);
-          frameSpliter.forEachRemaining(flowReceiver);
-        }
+    @Override
+    public void accept(ByteBuffer buffer) {
+      frameSpliter.wrap(buffer);
+      frameSpliter.forEachRemaining(flowReceiver);
+    }
 
-        @Override
-        public void connected() {
-          // if client, send Negotiate; otherwise, wait for Negotiate from
-          // client
-          establisher.connected();
-        }
+    @Override
+    public void connected() {
+      // if client, send Negotiate; otherwise, wait for Negotiate from
+      // client
+      establisher.connected();
+    }
 
-        @Override
-        public void disconnected() {
-          try {
-            flowSender.sendEndOfStream();
-          } catch (IOException e) {
-            // terminates heartbeats
-          }
-          reactor.post(sessionSuspendedTopic, null);
-        }
+    @Override
+    public void disconnected() {
+      try {
+        flowSender.sendEndOfStream();
+      } catch (IOException e) {
+        // terminates heartbeats
+      }
+      reactor.post(sessionSuspendedTopic, null);
+    }
 
-        public UUID getSessionId() {
-          return FixpSession.this.getSessionId();
-        }
+    public UUID getSessionId() {
+      return FixpSession.this.getSessionId();
+    }
 
-      };
+  };
 
   private byte[] uuidAsBytes;
 
   /**
    * Construct a session
    * 
-   * @param builder event pub / sub
+   * @param builder
+   *          event pub / sub
    */
-  @SuppressWarnings({"rawtypes", "unchecked"})
+  @SuppressWarnings({ "rawtypes", "unchecked" })
   protected FixpSession(Builder builder) {
     this.reactor = builder.reactor;
     this.transport = builder.transport;
@@ -395,20 +458,38 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
 
     Objects.requireNonNull(this.reactor);
     Objects.requireNonNull(this.transport);
-    Objects.requireNonNull(this.buffers);
-    Objects.requireNonNull(this.messageConsumer);
-    Objects.requireNonNull(this.outboundFlow);
 
     this.store = builder.store;
     this.isMultiplexedTransport = builder.isMultiplexedTransport;
     this.sessionId = builder.sessionId;
     this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
 
-    if (builder.isServer) {
+    switch (builder.role) {
+    case SERVER:
+      Objects.requireNonNull(this.messageConsumer);
+      Objects.requireNonNull(this.buffers);
+      Objects.requireNonNull(this.outboundFlow);
       this.establisher = createServerEstablisher();
-    } else {
+      break;
+    case CLIENT:
+      Objects.requireNonNull(this.messageConsumer);
+      Objects.requireNonNull(this.buffers);
+      Objects.requireNonNull(this.outboundFlow);
       this.establisher = createClientEstablisher(builder.credentials);
+      break;
+    case MULTICAST_PRODUCER:
+      Objects.requireNonNull(this.outboundFlow);
+      this.establisher = createMulticastProducerEstablisher(builder.topic);
+      break;
+    case MULTICAST_CONSUMER:
+      Objects.requireNonNull(this.messageConsumer);
+      Objects.requireNonNull(this.buffers);
+      this.establisher = createMulticastConsumerEstablisher(builder.topic);
+      break;
+    default:
+      this.establisher = null;
     }
+
     this.flowSender = (FlowSender) this.establisher;
     this.flowReceiver = (FlowReceiver) this.establisher;
 
@@ -432,6 +513,53 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     } catch (IOException e) {
       getTransport().close();
     }
+  }
+
+  private Establisher createClientEstablisher(byte[] credentials) {
+    final ClientSessionEstablisher clientSessionEstablisher = new ClientSessionEstablisher(reactor,
+        outboundFlow, getTransport()).withCredentials(sessionId, credentials);
+
+    Topic initTopic = SessionEventTopics.getTopic(sessionId, CLIENT_ESTABLISHED);
+    establishedSubscription = reactor.subscribe(initTopic, new EstablishedHandler());
+
+    return clientSessionEstablisher;
+  }
+
+  private Establisher createMulticastConsumerEstablisher(String topic) {
+    final MulticastConsumerEstablisher clientSessionEstablisher = new MulticastConsumerEstablisher(
+        reactor, getTransport()).withTopic(topic);
+
+    Topic initTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, new String(topic));
+    establishedSubscription = reactor.subscribe(initTopic, new EstablishedHandler());
+
+    return clientSessionEstablisher;
+  }
+
+  /**
+   * @param topic
+   * @return
+   */
+  private Establisher createMulticastProducerEstablisher(String topic) {
+    final MulticastProducerEstablisher serverSessionEstablisher = new MulticastProducerEstablisher(
+        reactor, getTransport(), outboundFlow, topic, sessionId);
+
+    Topic initTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, new String(topic));
+    establishedSubscription = reactor.subscribe(initTopic, new EstablishedHandler());
+
+    return serverSessionEstablisher;
+  }
+
+  private Establisher createServerEstablisher() {
+    final ServerSessionEstablisher serverSessionEstablisher = new ServerSessionEstablisher(reactor,
+        getTransport(), outboundFlow);
+
+    // Since subscription occurs before sessionId is available, use
+    // transport hashCode
+    // as unique identifier.
+    Topic initTopic = SessionEventTopics.getTopic(SERVER_NEGOTIATED, getTransport().hashCode());
+    negotiatedSubscription = reactor.subscribe(initTopic, negotiatedHandler);
+
+    return serverSessionEstablisher;
   }
 
   /*
@@ -460,6 +588,10 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     return true;
   }
 
+  protected BufferSupplier getBuffers() {
+    return buffers;
+  }
+
   public long getNextSeqNoToReceive() {
     if (flowReceiver instanceof Sequenced) {
       Sequenced sequenced = (Sequenced) flowReceiver;
@@ -483,6 +615,19 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
    */
   public UUID getSessionId() {
     return sessionId;
+  }
+
+  /**
+   * Returns the Transport to communicate with peer
+   * 
+   * @return a message Transport
+   */
+  protected Transport getTransport() {
+    return transport;
+  }
+
+  protected IdentifiableTransportConsumer<UUID> getTransportConsumer() {
+    return this.transportConsumer;
   }
 
   /*
@@ -545,10 +690,59 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     return flowSender.send(messages);
   }
 
+  private void setInboundStream() {
+    switch (establisher.getInboundFlow()) {
+    case UNSEQUENCED:
+      this.flowReceiver = new UnsequencedFlowReceiver(reactor, this, messageConsumer,
+          establisher.getInboundKeepaliveInterval());
+      break;
+    case IDEMPOTENT:
+      this.flowReceiver = new IdempotentFlowReceiver(reactor, this, messageConsumer,
+          establisher.getInboundKeepaliveInterval());
+      break;
+    case RECOVERABLE:
+      this.flowReceiver = new RecoverableFlowReceiver(reactor, this, messageConsumer,
+          establisher.getInboundKeepaliveInterval());
+      break;
+    case NONE:
+      this.flowReceiver = new NoneReceiver(reactor, sessionId,
+          establisher.getInboundKeepaliveInterval());
+      break;
+    }
+  }
+
   public void setNextSeqNoToSend(long nextSeqNo) {
     if (flowSender instanceof MutableSequence) {
       MutableSequence sequenced = (MutableSequence) flowSender;
       sequenced.setNextSeqNo(nextSeqNo);
+    }
+  }
+
+  private void setOutboundStream() {
+    Sequencer sequencer;
+    switch (establisher.getOutboundFlow()) {
+    case UNSEQUENCED:
+      this.flowSender = new UnsequencedFlowSender(reactor, sessionId, getTransport(),
+          establisher.getOutboundKeepaliveInterval());
+      break;
+    case IDEMPOTENT:
+      sequencer = isMultiplexedTransport ? new MultiplexSequencer(uuidAsBytes)
+          : (getTransport().isFifo() ? new SimplexStreamSequencer() : new SimplexSequencer());
+
+      this.flowSender = new IdempotentFlowSender(reactor, sessionId, getTransport(),
+          establisher.getOutboundKeepaliveInterval(), sequencer);
+      break;
+    case RECOVERABLE:
+      sequencer = isMultiplexedTransport ? new MultiplexSequencer(uuidAsBytes)
+          : (getTransport().isFifo() ? new SimplexStreamSequencer() : new SimplexSequencer());
+
+      this.flowSender = new RecoverableFlowSender(reactor, store, sessionId, getTransport(),
+          establisher.getOutboundKeepaliveInterval(), sequencer);
+      break;
+    case NONE:
+      this.flowSender = new NoneSender(reactor, sessionId, getTransport(),
+          establisher.getOutboundKeepaliveInterval());
+      break;
     }
   }
 
@@ -572,101 +766,5 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     }
     builder.append("]");
     return builder.toString();
-  }
-
-  private Establisher createClientEstablisher(byte[] credentials) {
-    final ClientSessionEstablisher clientSessionEstablisher =
-        new ClientSessionEstablisher(reactor, outboundFlow, getTransport()).withCredentials(
-            sessionId, credentials);
-
-    Topic initTopic = SessionEventTopics.getTopic(sessionId, CLIENT_ESTABLISHED);
-    establishedSubscription = reactor.subscribe(initTopic, new EstablishedHandler());
-
-    return clientSessionEstablisher;
-  }
-
-  private Establisher createServerEstablisher() {
-    final ServerSessionEstablisher serverSessionEstablisher =
-        new ServerSessionEstablisher(reactor, getTransport(), outboundFlow);
-
-    // Since subscription occurs before sessionId is available, use
-    // transport hashCode
-    // as unique identifier.
-    Topic initTopic = SessionEventTopics.getTopic(SERVER_NEGOTIATED, getTransport().hashCode());
-    negotiatedSubscription = reactor.subscribe(initTopic, negotiatedHandler);
-
-    return serverSessionEstablisher;
-  }
-
-  private void setInboundStream() {
-    switch (establisher.getInboundFlow()) {
-      case UNSEQUENCED:
-        this.flowReceiver =
-            new UnsequencedFlowReceiver(reactor, this, messageConsumer,
-                establisher.getInboundKeepaliveInterval());
-        break;
-      case IDEMPOTENT:
-        this.flowReceiver =
-            new IdempotentFlowReceiver(reactor, this, messageConsumer,
-                establisher.getInboundKeepaliveInterval());
-        break;
-      case RECOVERABLE:
-        this.flowReceiver =
-            new RecoverableFlowReceiver(reactor, this, messageConsumer,
-                establisher.getInboundKeepaliveInterval());
-        break;
-      case NONE:
-        this.flowReceiver =
-            new NoneReceiver(reactor, sessionId, establisher.getInboundKeepaliveInterval());
-        break;
-    }
-  }
-
-  private void setOutboundStream() {
-    switch (establisher.getOutboundFlow()) {
-      case UNSEQUENCED:
-        this.flowSender =
-            new UnsequencedFlowSender(reactor, sessionId, getTransport(),
-                establisher.getOutboundKeepaliveInterval());
-        break;
-      case IDEMPOTENT:
-        Sequencer sequencer =
-            isMultiplexedTransport ? new MultiplexSequencer(uuidAsBytes)
-                : (getTransport().isFifo() ? new SimplexStreamSequencer() : new SimplexSequencer());
-
-        this.flowSender =
-            new IdempotentFlowSender(reactor, sessionId, getTransport(),
-                establisher.getOutboundKeepaliveInterval(), sequencer);
-        break;
-      case RECOVERABLE:
-        this.flowSender =
-            new RecoverableFlowSender(reactor, store, sessionId, getTransport(),
-                establisher.getOutboundKeepaliveInterval(),
-                isMultiplexedTransport ? new MultiplexSequencer(uuidAsBytes)
-                    : new SimplexSequencer());
-        break;
-      case NONE:
-        this.flowSender =
-            new NoneSender(reactor, sessionId, getTransport(),
-                establisher.getOutboundKeepaliveInterval());
-        break;
-    }
-  }
-
-  protected BufferSupplier getBuffers() {
-    return buffers;
-  }
-
-  /**
-   * Returns the Transport to communicate with peer
-   * 
-   * @return a message Transport
-   */
-  protected Transport getTransport() {
-    return transport;
-  }
-
-  protected IdentifiableTransportConsumer<UUID> getTransportConsumer() {
-    return this.transportConsumer;
   }
 }

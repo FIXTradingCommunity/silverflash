@@ -87,10 +87,17 @@ public class NoneSender implements FlowSender {
 
     messageEncoder.attachForEncode(heartbeatBuffer, 0, MessageType.UNSEQUENCED_HEARTBEAT);
 
-    final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, HEARTBEAT);
-    heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
-    heartbeatSchedule =
-        reactor.postAtInterval(heartbeatTopic, heartbeatBuffer, outboundKeepaliveInterval);
+    if (outboundKeepaliveInterval != 0) {
+      final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, HEARTBEAT);
+      heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
+      heartbeatSchedule =
+          reactor.postAtInterval(heartbeatTopic, heartbeatBuffer, outboundKeepaliveInterval);
+    } else {
+      // No outbound heartbeats if multicast
+      heartbeatSubscription = null;
+      heartbeatSchedule = null;
+
+    }
   }
 
   /*

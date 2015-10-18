@@ -33,9 +33,9 @@ import java.util.WeakHashMap;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.NegotiationResponseDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder.TopicDecoder;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.Topic;
@@ -49,19 +49,27 @@ public class Sessions {
 
   private final Receiver newSessionHandler = new Receiver() {
     private final MessageDecoder messageDecoder = new MessageDecoder();
-    private NegotiationResponseDecoder negotiateDecoder;
+    byte[] uuid = new byte[16];
 
     public void accept(ByteBuffer buffer) {
       Optional<Decoder> optDecoder = messageDecoder.attachForDecode(buffer, buffer.position());
       if (optDecoder.isPresent()) {
         final Decoder decoder = optDecoder.get();
-        if (MessageType.NEGOTIATION_RESPONSE == decoder.getMessageType()) {
-          negotiateDecoder = (NegotiationResponseDecoder) decoder;
-          byte[] id = new byte[16];
-          negotiateDecoder.getSessionId(id, 0);
-          UUID sessionId = SessionId.UUIDFromBytes(id);
-          identifyNewSession(sessionId);
+        switch (decoder.getMessageType()) {
+        case NEGOTIATION_RESPONSE:
+          NegotiationResponseDecoder negotiateDecoder = (NegotiationResponseDecoder) decoder;
+          negotiateDecoder.getSessionId(uuid, 0);
+          identifyNewSession(SessionId.UUIDFromBytes(uuid));
+          break;
+        case TOPIC:
+          TopicDecoder topicDecoder = (TopicDecoder) decoder;
+          topicDecoder.getSessionId(uuid, 0);
+          identifyNewSession(SessionId.UUIDFromBytes(uuid));
+          break;
+        default:
+          break;
         }
+
       }
     }
 
@@ -76,7 +84,8 @@ public class Sessions {
   /**
    * Add a new Session for which the ID has not been assigned yet
    * 
-   * @param session to add
+   * @param session
+   *          to add
    */
   public void addNewSession(Session<UUID> session) {
     newSessions.add(session);
@@ -85,7 +94,8 @@ public class Sessions {
   /**
    * Add a new Session
    * 
-   * @param session to add
+   * @param session
+   *          to add
    */
   public void addSession(Session<UUID> session) {
     sessionMap.put(session, session.getSessionId());
@@ -94,7 +104,8 @@ public class Sessions {
   /**
    * Returns a Session by its unique identifier
    * 
-   * @param sessionId Session ID
+   * @param sessionId
+   *          Session ID
    * @return a Session or {@code null} if it is not found
    */
   public Session<UUID> getSession(UUID sessionId) {

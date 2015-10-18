@@ -105,9 +105,14 @@ public class IdempotentFlowReceiver implements FlowReceiver, Sequenced {
     toSendTopic = SessionEventTopics.getTopic(sessionId, APPLICATION_MESSAGE_TO_SEND);
     terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
 
-    final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, PEER_HEARTBEAT);
-    heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
-    heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, inboundKeepaliveInterval);
+    if (inboundKeepaliveInterval != 0) {
+      final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, PEER_HEARTBEAT);
+      heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
+      heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, inboundKeepaliveInterval);
+    } else {
+      heartbeatSubscription = null;
+      heartbeatSchedule = null;
+    }
   }
 
   public void accept(ByteBuffer buffer) {
@@ -193,7 +198,9 @@ public class IdempotentFlowReceiver implements FlowReceiver, Sequenced {
   private void terminated(ByteBuffer buffer) {
     isEndOfStream = true;
     reactor.post(terminatedTopic, buffer);
-    heartbeatSchedule.cancel();
-    heartbeatSubscription.unsubscribe();
+    if (heartbeatSchedule != null) {
+      heartbeatSchedule.cancel();
+      heartbeatSubscription.unsubscribe();
+    }
   }
 }

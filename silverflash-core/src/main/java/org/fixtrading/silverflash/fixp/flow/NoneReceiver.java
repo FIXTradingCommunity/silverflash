@@ -69,9 +69,15 @@ public class NoneReceiver implements FlowReceiver {
     uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
     terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
 
-    final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, PEER_HEARTBEAT);
-    heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
-    heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, inboundKeepaliveInterval);
+    if (inboundKeepaliveInterval != 0) {
+      final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, PEER_HEARTBEAT);
+      heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
+      heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, inboundKeepaliveInterval);
+    } else {
+      // No inbound heartbeats if multicast
+      heartbeatSubscription = null;
+      heartbeatSchedule = null;
+    }
   }
 
   /*

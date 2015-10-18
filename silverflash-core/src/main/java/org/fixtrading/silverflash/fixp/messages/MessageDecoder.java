@@ -28,28 +28,6 @@ import java.util.Optional;
  */
 public class MessageDecoder {
 
-  public abstract class Decoder {
-    protected ByteBuffer buffer;
-    protected int offset;
-
-    public ByteBuffer getBuffer() {
-      return buffer;
-    }
-
-    public abstract MessageType getMessageType();
-
-    public int getOffset() {
-      return offset;
-    }
-
-    Decoder attachForDecode(ByteBuffer buffer, int offset) {
-      this.buffer = buffer;
-      this.offset = offset;
-
-      return this;
-    }
-  }
-
   public final class ContextDecoder extends Decoder {
 
     public int getBlockLength() {
@@ -60,14 +38,36 @@ public class MessageDecoder {
       return MessageType.CONTEXT;
     }
 
+    public long getNextSeqNo() {
+      return buffer.getLong(offset + FIRST_FIELD_OFFSET + 16);
+    }
+
     public ContextDecoder getSessionId(byte[] dest, int destOffset) {
       buffer.position(offset + FIRST_FIELD_OFFSET);
       buffer.get(dest, destOffset, 16);
       return this;
     }
+  }
 
-    public long getNextSeqNo() {
-      return buffer.getLong(offset + FIRST_FIELD_OFFSET + 16);
+  public abstract class Decoder {
+    protected ByteBuffer buffer;
+    protected int offset;
+
+    Decoder attachForDecode(ByteBuffer buffer, int offset) {
+      this.buffer = buffer;
+      this.offset = offset;
+
+      return this;
+    }
+
+    public ByteBuffer getBuffer() {
+      return buffer;
+    }
+
+    public abstract MessageType getMessageType();
+
+    public int getOffset() {
+      return offset;
     }
   }
 
@@ -403,6 +403,35 @@ public class MessageDecoder {
     }
   }
 
+  public final class TopicDecoder extends Decoder {
+
+    public int getBlockLength() {
+      return 17;
+    }
+
+    public TopicDecoder getClassfication(byte[] dest, int destOffset) {
+      short variableLength = buffer.getShort(offset + FIRST_FIELD_OFFSET + getBlockLength());
+      buffer.position(offset + FIRST_FIELD_OFFSET + getBlockLength() + 2);
+      buffer.get(dest, destOffset, variableLength);
+      return this;
+    }
+
+    public FlowType getFlow() {
+      return FlowType.getFlowType(buffer.get(offset + FIRST_FIELD_OFFSET + 16));
+    }
+
+    public MessageType getMessageType() {
+      return MessageType.TOPIC;
+    }
+
+    public TopicDecoder getSessionId(byte[] dest, int destOffset) {
+      buffer.position(offset + FIRST_FIELD_OFFSET);
+      buffer.get(dest, destOffset, 16);
+      return this;
+    }
+
+  }
+
   public final class UnsequencedHeartbeatDecoder extends Decoder {
     public MessageType getMessageType() {
       return MessageType.UNSEQUENCED_HEARTBEAT;
@@ -417,37 +446,6 @@ public class MessageDecoder {
 
   private static final int FIRST_FIELD_OFFSET = MessageHeaderWithFrame.getLength();
 
-  private final ThreadLocal<Optional<Decoder>> establish = new ThreadLocal<Optional<Decoder>>() {
-    @Override
-    protected Optional<Decoder> initialValue() {
-      return Optional.of(new EstablishDecoder());
-    }
-  };
-
-  private final ThreadLocal<Optional<Decoder>> establishmentAck =
-      new ThreadLocal<Optional<Decoder>>() {
-        @Override
-        protected Optional<Decoder> initialValue() {
-          return Optional.of(new EstablishmentAckDecoder());
-        }
-      };
-
-  private final ThreadLocal<Optional<Decoder>> establishmentReject =
-      new ThreadLocal<Optional<Decoder>>() {
-        @Override
-        protected Optional<Decoder> initialValue() {
-          return Optional.of(new EstablishmentRejectDecoder());
-        }
-      };
-
-  private final ThreadLocal<Optional<Decoder>> finishedReceiving =
-      new ThreadLocal<Optional<Decoder>>() {
-        @Override
-        protected Optional<Decoder> initialValue() {
-          return Optional.of(new FinishedReceivingDecoder());
-        }
-      };
-
   private final ThreadLocal<Optional<Decoder>> context = new ThreadLocal<Optional<Decoder>>() {
     @Override
     protected Optional<Decoder> initialValue() {
@@ -455,21 +453,47 @@ public class MessageDecoder {
     }
   };
 
-  private final ThreadLocal<Optional<Decoder>> finishedSending =
-      new ThreadLocal<Optional<Decoder>>() {
-        @Override
-        protected Optional<Decoder> initialValue() {
-          return Optional.of(new FinishedSendingDecoder());
-        }
-      };
+  private final ThreadLocal<Optional<Decoder>> establish = new ThreadLocal<Optional<Decoder>>() {
+    @Override
+    protected Optional<Decoder> initialValue() {
+      return Optional.of(new EstablishDecoder());
+    }
+  };
 
-  private final ThreadLocal<MessageHeaderWithFrame> messageHeader =
-      new ThreadLocal<MessageHeaderWithFrame>() {
-        @Override
-        protected MessageHeaderWithFrame initialValue() {
-          return new MessageHeaderWithFrame();
-        }
-      };
+  private final ThreadLocal<Optional<Decoder>> establishmentAck = new ThreadLocal<Optional<Decoder>>() {
+    @Override
+    protected Optional<Decoder> initialValue() {
+      return Optional.of(new EstablishmentAckDecoder());
+    }
+  };
+
+  private final ThreadLocal<Optional<Decoder>> establishmentReject = new ThreadLocal<Optional<Decoder>>() {
+    @Override
+    protected Optional<Decoder> initialValue() {
+      return Optional.of(new EstablishmentRejectDecoder());
+    }
+  };
+
+  private final ThreadLocal<Optional<Decoder>> finishedReceiving = new ThreadLocal<Optional<Decoder>>() {
+    @Override
+    protected Optional<Decoder> initialValue() {
+      return Optional.of(new FinishedReceivingDecoder());
+    }
+  };
+
+  private final ThreadLocal<Optional<Decoder>> finishedSending = new ThreadLocal<Optional<Decoder>>() {
+    @Override
+    protected Optional<Decoder> initialValue() {
+      return Optional.of(new FinishedSendingDecoder());
+    }
+  };
+
+  private final ThreadLocal<MessageHeaderWithFrame> messageHeader = new ThreadLocal<MessageHeaderWithFrame>() {
+    @Override
+    protected MessageHeaderWithFrame initialValue() {
+      return new MessageHeaderWithFrame();
+    }
+  };
 
   private final ThreadLocal<Optional<Decoder>> negotiate = new ThreadLocal<Optional<Decoder>>() {
     @Override
@@ -478,21 +502,19 @@ public class MessageDecoder {
     }
   };
 
-  private final ThreadLocal<Optional<Decoder>> negotiationReject =
-      new ThreadLocal<Optional<Decoder>>() {
-        @Override
-        protected Optional<Decoder> initialValue() {
-          return Optional.of(new NegotiationRejectDecoder());
-        }
-      };
+  private final ThreadLocal<Optional<Decoder>> negotiationReject = new ThreadLocal<Optional<Decoder>>() {
+    @Override
+    protected Optional<Decoder> initialValue() {
+      return Optional.of(new NegotiationRejectDecoder());
+    }
+  };
 
-  private final ThreadLocal<Optional<Decoder>> negotiationResponse =
-      new ThreadLocal<Optional<Decoder>>() {
-        @Override
-        protected Optional<Decoder> initialValue() {
-          return Optional.of(new NegotiationResponseDecoder());
-        }
-      };
+  private final ThreadLocal<Optional<Decoder>> negotiationResponse = new ThreadLocal<Optional<Decoder>>() {
+    @Override
+    protected Optional<Decoder> initialValue() {
+      return Optional.of(new NegotiationResponseDecoder());
+    }
+  };
 
   private final ThreadLocal<Optional<Decoder>> notApplied = new ThreadLocal<Optional<Decoder>>() {
     @Override
@@ -501,21 +523,19 @@ public class MessageDecoder {
     }
   };
 
-  private final ThreadLocal<Optional<Decoder>> retransmission =
-      new ThreadLocal<Optional<Decoder>>() {
-        @Override
-        protected Optional<Decoder> initialValue() {
-          return Optional.of(new RetransmissionDecoder());
-        }
-      };
+  private final ThreadLocal<Optional<Decoder>> retransmission = new ThreadLocal<Optional<Decoder>>() {
+    @Override
+    protected Optional<Decoder> initialValue() {
+      return Optional.of(new RetransmissionDecoder());
+    }
+  };
 
-  private final ThreadLocal<Optional<Decoder>> retransmissionRequest =
-      new ThreadLocal<Optional<Decoder>>() {
-        @Override
-        protected Optional<Decoder> initialValue() {
-          return Optional.of(new RetransmissionRequestDecoder());
-        }
-      };
+  private final ThreadLocal<Optional<Decoder>> retransmissionRequest = new ThreadLocal<Optional<Decoder>>() {
+    @Override
+    protected Optional<Decoder> initialValue() {
+      return Optional.of(new RetransmissionRequestDecoder());
+    }
+  };
 
   private final ThreadLocal<Optional<Decoder>> sequence = new ThreadLocal<Optional<Decoder>>() {
     @Override
@@ -531,13 +551,19 @@ public class MessageDecoder {
     }
   };
 
-  private final ThreadLocal<Optional<Decoder>> unsequencedHeartbeat =
-      new ThreadLocal<Optional<Decoder>>() {
-        @Override
-        protected Optional<Decoder> initialValue() {
-          return Optional.of(new UnsequencedHeartbeatDecoder());
-        }
-      };
+  private final ThreadLocal<Optional<Decoder>> unsequencedHeartbeat = new ThreadLocal<Optional<Decoder>>() {
+    @Override
+    protected Optional<Decoder> initialValue() {
+      return Optional.of(new UnsequencedHeartbeatDecoder());
+    }
+  };
+
+  private final ThreadLocal<Optional<Decoder>> topic = new ThreadLocal<Optional<Decoder>>() {
+    @Override
+    protected Optional<Decoder> initialValue() {
+      return Optional.of(new TopicDecoder());
+    }
+  };
 
   public Optional<Decoder> attachForDecode(ByteBuffer buffer, int offset) {
     MessageHeaderWithFrame header = messageHeader.get();
@@ -551,68 +577,72 @@ public class MessageDecoder {
 
     Optional<Decoder> opt;
     switch (messageType) {
-      case SEQUENCE:
-        opt = sequence.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case RETRANSMISSION:
-        opt = retransmission.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case RETRANSMIT_REQUEST:
-        opt = retransmissionRequest.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case NOT_APPLIED:
-        opt = notApplied.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case NEGOTIATE:
-        opt = negotiate.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case NEGOTIATION_RESPONSE:
-        opt = negotiationResponse.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case NEGOTIATION_REJECT:
-        opt = negotiationReject.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case ESTABLISH:
-        opt = establish.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case ESTABLISHMENT_ACK:
-        opt = establishmentAck.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case ESTABLISHMENT_REJECT:
-        opt = establishmentReject.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case UNSEQUENCED_HEARTBEAT:
-        opt = unsequencedHeartbeat.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case TERMINATE:
-        opt = terminate.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case FINISHED_SENDING:
-        opt = finishedSending.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case FINISHED_RECEIVING:
-        opt = finishedReceiving.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      case CONTEXT:
-        opt = context.get();
-        opt.get().attachForDecode(buffer, offset);
-        break;
-      default:
-        opt = Optional.empty();
+    case SEQUENCE:
+      opt = sequence.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case RETRANSMISSION:
+      opt = retransmission.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case RETRANSMIT_REQUEST:
+      opt = retransmissionRequest.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case NOT_APPLIED:
+      opt = notApplied.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case NEGOTIATE:
+      opt = negotiate.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case NEGOTIATION_RESPONSE:
+      opt = negotiationResponse.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case NEGOTIATION_REJECT:
+      opt = negotiationReject.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case ESTABLISH:
+      opt = establish.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case ESTABLISHMENT_ACK:
+      opt = establishmentAck.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case ESTABLISHMENT_REJECT:
+      opt = establishmentReject.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case UNSEQUENCED_HEARTBEAT:
+      opt = unsequencedHeartbeat.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case TERMINATE:
+      opt = terminate.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case FINISHED_SENDING:
+      opt = finishedSending.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case FINISHED_RECEIVING:
+      opt = finishedReceiving.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case CONTEXT:
+      opt = context.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;
+    case TOPIC:
+      opt = topic.get();
+      opt.get().attachForDecode(buffer, offset);
+      break;      
+    default:
+      opt = Optional.empty();
     }
     return opt;
   }
