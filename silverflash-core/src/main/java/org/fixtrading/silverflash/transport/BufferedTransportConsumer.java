@@ -159,10 +159,12 @@ public class BufferedTransportConsumer implements BufferSupplier, Service, Trans
    */
   @Override
   public void disconnected() {
-    long sequence = ringBuffer.next();
-    final BufferEvent event = ringBuffer.get(sequence);
-    event.set(EventType.CONNECTED);
-    ringBuffer.publish(sequence);
+    if (ringBuffer != null) {
+      long sequence = ringBuffer.next();
+      final BufferEvent event = ringBuffer.get(sequence);
+      event.set(EventType.CONNECTED);
+      ringBuffer.publish(sequence);
+    }
   }
 
   /*

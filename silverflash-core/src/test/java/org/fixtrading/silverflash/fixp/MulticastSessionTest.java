@@ -37,6 +37,7 @@ import org.fixtrading.silverflash.transport.Transport;
 import org.fixtrading.silverflash.transport.TransportDecorator;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 public class MulticastSessionTest {
@@ -97,8 +98,9 @@ public class MulticastSessionTest {
     reactor2.close();
   }
 
+  @Ignore
   @Test
-  public void sendSequencedWithFrame() throws Exception {
+  public void multicast() throws Exception {
     Transport serverTransport = memoryTransport.getServerTransport();
     TransportDecorator nonFifoServerTransport = new TransportDecorator(serverTransport, false);
     TestReceiver serverReceiver = new TestReceiver();
@@ -158,7 +160,7 @@ public class MulticastSessionTest {
     }
 
     try {
-      Thread.sleep(1000000);
+      Thread.sleep(1000);
     } catch (InterruptedException e) {
 
     }
