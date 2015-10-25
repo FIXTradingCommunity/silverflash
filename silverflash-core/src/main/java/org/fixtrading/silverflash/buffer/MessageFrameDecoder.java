@@ -14,11 +14,22 @@
  * limitations under the License.
  *
  */
+package org.fixtrading.silverflash.buffer;
+
+import java.nio.ByteBuffer;
 
 /**
- * Basic interfaces used in Silver Flash, an implementation of FIXP session protocol.
- * 
- * @author Don Mendelson
- * @see <a href="https://github.com/FIXTradingCommunity/fixp-specification">FIXP FIX performance session layer</a>
+ * @author Donald
+ *
  */
-package org.fixtrading.silverflash;
+public interface MessageFrameDecoder {
+
+  MessageFrameDecoder decodeFrameHeader();
+
+  MessageFrameDecoder decodeFrameTrailer();
+
+  int getMessageLength();
+
+  MessageFrameDecoder wrap(ByteBuffer buffer);
+
+}

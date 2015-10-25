@@ -14,11 +14,28 @@
  * limitations under the License.
  *
  */
+package org.fixtrading.silverflash.sofh;
 
-/**
- * Basic interfaces used in Silver Flash, an implementation of FIXP session protocol.
- * 
- * @author Don Mendelson
- * @see <a href="https://github.com/FIXTradingCommunity/fixp-specification">FIXP FIX performance session layer</a>
- */
-package org.fixtrading.silverflash;
+public enum Encoding {
+  SBE_1_0_BIG_ENDIAN((short)0x5BE0),
+  SBE_1_0_LITTLE_ENDIAN((short)0xEB50),
+  FIX_GPB_1_0((short)0x4700),
+  FIX_ASN_1_PER_1_0((short)0xA500),
+  FIX_ASN_1_BER_1_0((short)0xA501),
+  FIX_ASN_1_OER_1_0((short)0xA502),
+  FIX_TAG_VALUE((short)0xF000),
+  FIXML_SCHEMA((short)0XF100),
+  FIX_FAST((short)0xFAFF),
+  FIX_JSON((short)0xF500),
+  FIX_BSON((short)0xFB00),
+  ;
+  private short code;
+
+  Encoding(short code) {
+    this.code = code;
+  }
+  
+  public short getCode() {
+    return this.code;
+  }
+}

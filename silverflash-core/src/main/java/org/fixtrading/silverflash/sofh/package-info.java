@@ -16,9 +16,9 @@
  */
 
 /**
- * Basic interfaces used in Silver Flash, an implementation of FIXP session protocol.
+ * Implementation of FIX Simple Open Framing Header
  * 
  * @author Don Mendelson
- * @see <a href="https://github.com/FIXTradingCommunity/fixp-specification">FIXP FIX performance session layer</a>
+ * @see <a href="https://github.com/FIXTradingCommunity/fix-simple-open-framing-header">FIX Simple Open Framing Header</a>
  */
-package org.fixtrading.silverflash;
+package org.fixtrading.silverflash.sofh;
