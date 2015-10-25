@@ -14,22 +14,4 @@
  * limitations under the License.
  *
  */
-package org.fixtrading.silverflash.buffer;
-
-import java.nio.ByteBuffer;
-
-/**
- * @author Donald
- *
- */
-public interface MessageFrameDecoder {
-
-  MessageFrameDecoder decodeFrameHeader();
-
-  MessageFrameDecoder decodeFrameTrailer();
-
-  int getMessageLength();
-
-  MessageFrameDecoder wrap(ByteBuffer buffer);
-
-}
+package org.fixtrading.silverflash.frame;

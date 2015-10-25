@@ -21,8 +21,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.function.Consumer;
 
-import org.fixtrading.silverflash.fixp.frame.FixpWithMessageLengthFrameSpliterator;
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeader;
+import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
 import org.openjdk.jmh.annotations.AuxCounters;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.Level;
@@ -45,8 +45,8 @@ public class FrameSpliteratorBenchmark {
   private final int schemaId = 66;
   private final int templateId = 77;
 
-  private FixpWithMessageLengthFrameSpliterator spliterator;
-  private MessageHeaderWithFrame messageHeader;
+  private MessageLengthFrameSpliterator spliterator;
+  private SbeMessageHeader messageHeader;
   private ByteBuffer buffer;
 
   @AuxCounters
@@ -66,7 +66,7 @@ public class FrameSpliteratorBenchmark {
   public void initTestEnvironment() throws Exception {
     buffer = ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder());
     ByteBuffer message =
-        ByteBuffer.allocate(messageLength - MessageHeaderWithFrame.getLength()).order(
+        ByteBuffer.allocate(messageLength - SbeMessageHeader.getLength()).order(
             ByteOrder.nativeOrder());
     for (int i = 0; i < message.limit(); i++) {
       message.put((byte) i);
@@ -75,8 +75,8 @@ public class FrameSpliteratorBenchmark {
     for (int i = 0; i < numberOfMessages; i++) {
       encodeApplicationMessage(buffer, message);
     }
-    messageHeader = new MessageHeaderWithFrame();
-    spliterator = new FixpWithMessageLengthFrameSpliterator();
+    messageHeader = new SbeMessageHeader();
+    spliterator = new MessageLengthFrameSpliterator();
   }
 
   @Benchmark
@@ -102,8 +102,8 @@ public class FrameSpliteratorBenchmark {
   private void encodeApplicationMessage(ByteBuffer buf, ByteBuffer message) {
     message.rewind();
     int messageLength = message.remaining();
-    MessageHeaderWithFrame.encode(buf, buf.position(), messageLength, templateId, schemaId,
-        schemaVersion, messageLength + MessageHeaderWithFrame.getLength());
+    SbeMessageHeader.encode(buf, buf.position(), messageLength, templateId, schemaId,
+        schemaVersion, messageLength + SbeMessageHeader.getLength());
 
     buf.put(message);
   }

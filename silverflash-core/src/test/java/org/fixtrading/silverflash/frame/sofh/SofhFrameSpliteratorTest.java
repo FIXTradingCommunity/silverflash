@@ -15,7 +15,7 @@
  *
  */
 
-package org.fixtrading.silverflash.fixp.frame;
+package org.fixtrading.silverflash.frame.sofh;
 
 import static org.junit.Assert.*;
 
@@ -23,25 +23,24 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.function.Consumer;
 
-import org.fixtrading.silverflash.fixp.frame.FixpWithMessageLengthFrameSpliterator;
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.frame.sofh.SofhFrameEncoder;
+import org.fixtrading.silverflash.frame.sofh.SofhFrameSpliterator;
 import org.junit.Before;
 import org.junit.Test;
 
-public class FrameSpliteratorTest {
+public class SofhFrameSpliteratorTest {
 
-  FixpWithMessageLengthFrameSpliterator spliterator;
+  SofhFrameSpliterator spliterator;
   ByteBuffer buffer;
   private ByteBuffer[] messages;
   final int messageCount = Byte.MAX_VALUE;
   private int count;
-  private final int schemaVersion = 1;
-  private final int schemaId = 66;
-  private final int templateId = 77;
-  private MessageHeaderWithFrame messageHeader = new MessageHeaderWithFrame();
+  private SofhFrameEncoder encoder;
 
   @Before
   public void setUp() throws Exception {
+    encoder = new SofhFrameEncoder();
+
     messages = new ByteBuffer[messageCount];
     for (int i = 0; i < messageCount; ++i) {
       // at least 1 byte per message
@@ -62,21 +61,16 @@ public class FrameSpliteratorTest {
     }
 
     buffer.flip();
-    spliterator = new FixpWithMessageLengthFrameSpliterator(buffer);
+    spliterator = new SofhFrameSpliterator(buffer);
 
     count = 0;
     buffer.rewind();
-    byte[] dst = new byte[16 * 1024];
-
+ 
     while (spliterator.tryAdvance(new Consumer<ByteBuffer>() {
 
       public void accept(ByteBuffer message) {
-        messageHeader.attachForDecode(buffer, message.position());
-        assertEquals(templateId, messageHeader.getTemplateId());
-        int messageLength = messageHeader.getMessageLength();
-        assertEquals(MessageHeaderWithFrame.getLength() + count + 1, messageLength);
-        message.get(dst, 0, messageLength);
-        assertEquals(messages[count].get(0), dst[MessageHeaderWithFrame.getLength()]);
+        int messageLength = message.remaining();
+        assertEquals(count + 1, messageLength);
         count++;
 
       }
@@ -90,22 +84,18 @@ public class FrameSpliteratorTest {
     encodeApplicationMessage(buffer, messages[messageCount - 1]);
     buffer.limit(buffer.position() - 1);
     buffer.flip();
-    spliterator = new FixpWithMessageLengthFrameSpliterator(buffer);
-    spliterator.tryAdvance(new Consumer<ByteBuffer>() {
+    spliterator = new SofhFrameSpliterator(buffer);
+    assertFalse(spliterator.tryAdvance(new Consumer<ByteBuffer>() {
 
       public void accept(ByteBuffer message) {
-        messageHeader.attachForDecode(buffer, message.position());
-        assertEquals(schemaId, messageHeader.getSchemaId());
       }
-    });
+    }));
   }
 
   public void encodeApplicationMessage(ByteBuffer buf, ByteBuffer message) {
     message.rewind();
     int messageLength = message.remaining();
-    MessageHeaderWithFrame.encode(buf, buf.position(), messageLength, templateId, schemaId,
-        schemaVersion, messageLength + MessageHeaderWithFrame.getLength());
-
+    encoder.wrap(buf).setMessageLength(messageLength).encodeFrameHeader();
     buf.put(message);
   }
 }

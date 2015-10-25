@@ -14,7 +14,7 @@
  * limitations under the License.
  *
  */
-package org.fixtrading.silverflash.buffer;
+package org.fixtrading.silverflash.frame;
 
 import java.nio.ByteBuffer;
 

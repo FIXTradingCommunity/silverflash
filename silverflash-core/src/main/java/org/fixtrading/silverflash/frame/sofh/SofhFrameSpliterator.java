@@ -14,7 +14,7 @@
  * limitations under the License.
  *
  */
-package org.fixtrading.silverflash.sofh;
+package org.fixtrading.silverflash.frame.sofh;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -22,10 +22,11 @@ import java.util.Objects;
 import java.util.Spliterator;
 import java.util.function.Consumer;
 
-import org.fixtrading.silverflash.buffer.FrameSpliterator;
+import org.fixtrading.silverflash.frame.FrameSpliterator;
+
 
 /**
- * @author Donald
+ * @author Don Mendelson
  *
  */
 public class SofhFrameSpliterator implements FrameSpliterator {
@@ -59,18 +60,18 @@ public class SofhFrameSpliterator implements FrameSpliterator {
     decoder.wrap(buffer);
     decoder.decodeFrameHeader();
     final int messageLength = decoder.getMessageLength();
+    int messageLimit = offset + SofhFrameDecoder.HEADER_LENGTH + messageLength;
 
-    if (messageLength <= 0 || (offset + messageLength > buffer.limit())) {
+    if (messageLength <= 0 || (messageLimit > buffer.limit())) {
       return false;
     }
 
     ByteBuffer message = buffer.duplicate();
     message.order(originalByteOrder);
-    message.limit(offset + SofhFrameDecoder.HEADER_LENGTH + messageLength);
+    message.limit(messageLimit);
 
     action.accept(message);
-    offset += (SofhFrameDecoder.HEADER_LENGTH + messageLength);
-    buffer.position(offset);
+    buffer.position(messageLimit);
     buffer.order(originalByteOrder);
     return true;
   }

@@ -15,7 +15,7 @@
  *
  */
 
-package org.fixtrading.silverflash.sofh;
+package org.fixtrading.silverflash.frame;
 
 import static org.junit.Assert.*;
 
@@ -23,21 +23,24 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.function.Consumer;
 
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeader;
+import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
+import org.fixtrading.silverflash.frame.sofh.SofhFrameEncoder;
 import org.junit.Before;
 import org.junit.Test;
 
-public class SofhFrameSpliteratorTest {
+public class MessageLengthFrameSpliteratorTest {
 
-  SofhFrameSpliterator spliterator;
+  MessageLengthFrameSpliterator spliterator;
   ByteBuffer buffer;
   private ByteBuffer[] messages;
   final int messageCount = Byte.MAX_VALUE;
   private int count;
-  private SofhFrameEncoder encoder;
+  private MessageLengthFrameEncoder encoder;
 
   @Before
   public void setUp() throws Exception {
-    encoder = new SofhFrameEncoder();
+    encoder = new MessageLengthFrameEncoder();
 
     messages = new ByteBuffer[messageCount];
     for (int i = 0; i < messageCount; ++i) {
@@ -59,18 +62,17 @@ public class SofhFrameSpliteratorTest {
     }
 
     buffer.flip();
-    spliterator = new SofhFrameSpliterator(buffer);
+    spliterator = new MessageLengthFrameSpliterator(buffer);
 
     count = 0;
     buffer.rewind();
- 
+
     while (spliterator.tryAdvance(new Consumer<ByteBuffer>() {
 
       public void accept(ByteBuffer message) {
         int messageLength = message.remaining();
         assertEquals(count + 1, messageLength);
         count++;
-
       }
     }));
 
@@ -82,12 +84,12 @@ public class SofhFrameSpliteratorTest {
     encodeApplicationMessage(buffer, messages[messageCount - 1]);
     buffer.limit(buffer.position() - 1);
     buffer.flip();
-    spliterator = new SofhFrameSpliterator(buffer);
-    spliterator.tryAdvance(new Consumer<ByteBuffer>() {
+    spliterator = new MessageLengthFrameSpliterator(buffer);
+    assertFalse(spliterator.tryAdvance(new Consumer<ByteBuffer>() {
 
       public void accept(ByteBuffer message) {
-      }
-    });
+       }
+    }));
   }
 
   public void encodeApplicationMessage(ByteBuffer buf, ByteBuffer message) {

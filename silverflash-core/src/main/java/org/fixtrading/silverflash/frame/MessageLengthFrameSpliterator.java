@@ -15,15 +15,15 @@
  *
  */
 
-package org.fixtrading.silverflash.fixp.frame;
+package org.fixtrading.silverflash.frame;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Objects;
 import java.util.Spliterator;
 import java.util.function.Consumer;
 
-import org.fixtrading.silverflash.buffer.FrameSpliterator;
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.frame.sofh.SofhFrameDecoder;
 
 /**
  * Splits and iterates message frames within a buffer
@@ -33,24 +33,24 @@ import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
  * @author Don Mendelson
  *
  */
-public class FixpWithMessageLengthFrameSpliterator implements FrameSpliterator {
+public class MessageLengthFrameSpliterator implements FrameSpliterator {
 
   private ByteBuffer buffer;
-  private int offset = 0;
-  private final MessageHeaderWithFrame messageHeader = new MessageHeaderWithFrame();
+  private MessageLengthFrameDecoder decoder = new MessageLengthFrameDecoder();
+  private ByteOrder originalByteOrder;
 
   /**
    * Construct this FixpWithMessageLengthFrameSpliterator without a buffer Must call
    * {@link #wrap(ByteBuffer)} to use this object.
    */
-  public FixpWithMessageLengthFrameSpliterator() {}
+  public MessageLengthFrameSpliterator() {}
 
   /**
    * Construct this FixpWithMessageLengthFrameSpliterator with a buffer
    * 
    * @param buffer buffer holding message frames
    */
-  public FixpWithMessageLengthFrameSpliterator(ByteBuffer buffer) {
+  public MessageLengthFrameSpliterator(ByteBuffer buffer) {
     wrap(buffer);
   }
 
@@ -73,35 +73,39 @@ public class FixpWithMessageLengthFrameSpliterator implements FrameSpliterator {
   public void wrap(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     this.buffer = buffer;
-    offset = buffer.position();
+    this.originalByteOrder = buffer.order();
   }
 
   @Override
   public boolean tryAdvance(Consumer<? super ByteBuffer> action) {
     Objects.requireNonNull(action);
-    if (offset + MessageHeaderWithFrame.getLength() > buffer.limit()) {
+    int offset = buffer.position();
+
+    int messageOffset = offset + MessageLengthFrameDecoder.HEADER_LENGTH;
+    if (messageOffset > buffer.limit()) {
       return false;
     }
-    messageHeader.attachForDecode(buffer, offset);
-    final int messageLength = messageHeader.getMessageLength();
+    decoder.wrap(buffer);
+    decoder.decodeFrameHeader();
+    final int messageLength = decoder.getMessageLength();
+    int messageLimit = offset + MessageLengthFrameDecoder.HEADER_LENGTH + messageLength;
 
-    if (messageLength <= 0 || (offset + messageLength > buffer.limit())) {
+    if (messageLength <= 0 || (messageLimit > buffer.limit())) {
       return false;
     }
 
     ByteBuffer message = buffer.duplicate();
-    message.order(buffer.order());
-    message.position(offset);
-    message.limit(offset + messageHeader.getMessageLength());
+    message.order(originalByteOrder);
+    message.limit(messageLimit);
 
     action.accept(message);
-    offset += messageLength;
+    buffer.position(messageLimit);
     return true;
   }
 
   public boolean hasRemaining() {
-    return offset < buffer.limit();
-  }
+    return buffer.remaining() > 0;
+ }
 
   @Override
   public Spliterator<ByteBuffer> trySplit() {

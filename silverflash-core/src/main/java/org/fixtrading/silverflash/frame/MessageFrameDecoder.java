@@ -14,11 +14,22 @@
  * limitations under the License.
  *
  */
+package org.fixtrading.silverflash.frame;
+
+import java.nio.ByteBuffer;
 
 /**
- * Implementation of FIX Simple Open Framing Header
- * 
- * @author Don Mendelson
- * @see <a href="https://github.com/FIXTradingCommunity/fix-simple-open-framing-header">FIX Simple Open Framing Header</a>
+ * @author Donald
+ *
  */
-package org.fixtrading.silverflash.sofh;
+public interface MessageFrameDecoder {
+
+  MessageFrameDecoder decodeFrameHeader();
+
+  MessageFrameDecoder decodeFrameTrailer();
+
+  int getMessageLength();
+
+  MessageFrameDecoder wrap(ByteBuffer buffer);
+
+}

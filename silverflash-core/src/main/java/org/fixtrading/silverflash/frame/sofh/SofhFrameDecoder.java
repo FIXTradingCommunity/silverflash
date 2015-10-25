@@ -14,20 +14,21 @@
  * limitations under the License.
  *
  */
-package org.fixtrading.silverflash.sofh;
+package org.fixtrading.silverflash.frame.sofh;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
 
-import org.fixtrading.silverflash.buffer.MessageFrameEncoder;
+import org.fixtrading.silverflash.frame.MessageFrameDecoder;
+
 
 /**
- * FIX Simple Open Framing Header encoder
+ * FIX Simple Open Framing Header decoder
  * @author Don Mendelson
  *
  */
-public class SofhFrameEncoder implements MessageFrameEncoder {
+public class SofhFrameDecoder implements MessageFrameDecoder {
  
   public static final int MESSAGE_LENGTH_OFFSET = 0;
   public static final int ENCODING_OFFSET = 4;
@@ -39,50 +40,44 @@ public class SofhFrameEncoder implements MessageFrameEncoder {
   private int messageLength = -1;
   private short encoding = Encoding.SBE_1_0_LITTLE_ENDIAN.getCode();
 
-  /* (non-Javadoc)
-   * @see org.fixtrading.silverflash.buffer.MessageFrameEncoder#encodeFrameHeader()
+   /* (non-Javadoc)
+   * @see org.fixtrading.silverflash.frame.sofh.MessageFrameDecoder#decodeFrameHeader()
    */
   @Override
-  public MessageFrameEncoder encodeFrameHeader() {
+  public MessageFrameDecoder decodeFrameHeader() {
     buffer.order(ByteOrder.BIG_ENDIAN);
-    buffer.putInt(frameStartOffset + MESSAGE_LENGTH_OFFSET, messageLength);
-    buffer.putShort(frameStartOffset + ENCODING_OFFSET, encoding);
+    messageLength = buffer.getInt(frameStartOffset + MESSAGE_LENGTH_OFFSET);
+    encoding = buffer.getShort(frameStartOffset + ENCODING_OFFSET);
     buffer.position(frameStartOffset + HEADER_LENGTH);
     buffer.order(originalByteOrder);
     return this;
   }
 
   /* (non-Javadoc)
-   * @see org.fixtrading.silverflash.buffer.MessageFrameEncoder#encodeFrameTrailer()
+   * @see org.fixtrading.silverflash.frame.sofh.MessageFrameDecoder#decodeFrameTrailer()
    */
   @Override
-  public MessageFrameEncoder encodeFrameTrailer() {
-    buffer.order(ByteOrder.BIG_ENDIAN);
-    buffer.putInt(frameStartOffset + MESSAGE_LENGTH_OFFSET, messageLength);
-    buffer.position(frameStartOffset + HEADER_LENGTH + messageLength);
-    buffer.order(originalByteOrder);
+  public MessageFrameDecoder decodeFrameTrailer() {
     return this;
   }
 
-  /* (non-Javadoc)
-   * @see org.fixtrading.silverflash.buffer.MessageFrameEncoder#setMessageLength(int)
+   /* (non-Javadoc)
+   * @see org.fixtrading.silverflash.frame.sofh.MessageFrameDecoder#getMessageLength()
    */
   @Override
-  public MessageFrameEncoder setMessageLength(int messageLength) {
-    this.messageLength  = messageLength;
-    return this;
+  public int getMessageLength() {
+    return this.messageLength;
   }
   
-  public MessageFrameEncoder setEncoding(short code) {
-    this.encoding  = code;
-    return this;
+  public short getEncoding(short code) {
+    return this.encoding;
   }
 
   /* (non-Javadoc)
-   * @see org.fixtrading.silverflash.buffer.MessageFrameEncoder#wrap(java.nio.ByteBuffer)
+   * @see org.fixtrading.silverflash.frame.sofh.MessageFrameDecoder#wrap(java.nio.ByteBuffer)
    */
   @Override
-  public MessageFrameEncoder wrap(ByteBuffer buffer) {
+  public MessageFrameDecoder wrap(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     this.buffer = buffer;
     this.originalByteOrder = buffer.order();
