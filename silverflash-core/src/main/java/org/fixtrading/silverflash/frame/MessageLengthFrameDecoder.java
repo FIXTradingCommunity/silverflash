@@ -14,31 +14,25 @@
  * limitations under the License.
  *
  */
-package org.fixtrading.silverflash.frame.sofh;
+package org.fixtrading.silverflash.frame;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Objects;
 
-import org.fixtrading.silverflash.frame.MessageFrameDecoder;
-
 /**
- * FIX Simple Open Framing Header decoder
+ * Decodes a message length prefix to delimit a message frame
  * 
  * @author Don Mendelson
  *
  */
-public class SofhFrameDecoder implements MessageFrameDecoder {
+public class MessageLengthFrameDecoder implements MessageFrameDecoder {
 
-  public static final int ENCODING_OFFSET = 4;
-  public static final int HEADER_LENGTH = 6;
+  public static final int HEADER_LENGTH = 2;
   public static final int MESSAGE_LENGTH_OFFSET = 0;
 
   private ByteBuffer buffer;
-  private short encoding = Encoding.SBE_1_0_LITTLE_ENDIAN.getCode();
   private int frameStartOffset = 0;
   private int messageLength = -1;
-  private ByteOrder originalByteOrder;
 
   /*
    * (non-Javadoc)
@@ -47,11 +41,8 @@ public class SofhFrameDecoder implements MessageFrameDecoder {
    */
   @Override
   public MessageFrameDecoder decodeFrameHeader() {
-    buffer.order(ByteOrder.BIG_ENDIAN);
-    messageLength = buffer.getInt(frameStartOffset + MESSAGE_LENGTH_OFFSET);
-    encoding = buffer.getShort(frameStartOffset + ENCODING_OFFSET);
+    messageLength = buffer.getShort(frameStartOffset + MESSAGE_LENGTH_OFFSET) & 0xffff;
     buffer.position(frameStartOffset + HEADER_LENGTH);
-    buffer.order(originalByteOrder);
     return this;
   }
 
@@ -63,10 +54,6 @@ public class SofhFrameDecoder implements MessageFrameDecoder {
   @Override
   public MessageFrameDecoder decodeFrameTrailer() {
     return this;
-  }
-
-  public short getEncoding(short code) {
-    return this.encoding;
   }
 
   /*
@@ -88,7 +75,6 @@ public class SofhFrameDecoder implements MessageFrameDecoder {
   public MessageFrameDecoder wrap(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     this.buffer = buffer;
-    this.originalByteOrder = buffer.order();
     this.frameStartOffset = buffer.position();
     messageLength = -1;
     return this;

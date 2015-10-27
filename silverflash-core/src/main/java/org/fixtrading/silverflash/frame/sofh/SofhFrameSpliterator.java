@@ -24,7 +24,6 @@ import java.util.function.Consumer;
 
 import org.fixtrading.silverflash.frame.FrameSpliterator;
 
-
 /**
  * @author Don Mendelson
  *
@@ -32,12 +31,14 @@ import org.fixtrading.silverflash.frame.FrameSpliterator;
 public class SofhFrameSpliterator implements FrameSpliterator {
 
   private ByteBuffer buffer;
-  private ByteOrder originalByteOrder;
   private SofhFrameDecoder decoder = new SofhFrameDecoder();
+  private int offset;
+  private ByteOrder originalByteOrder;
 
   public SofhFrameSpliterator() {
-    
+
   }
+
   /**
    * @param buffer2
    */
@@ -45,14 +46,44 @@ public class SofhFrameSpliterator implements FrameSpliterator {
     wrap(buffer);
   }
 
-  /* (non-Javadoc)
+  /*
+   * (non-Javadoc)
+   * 
+   * @see java.util.Spliterator#characteristics()
+   */
+  @Override
+  public int characteristics() {
+    return DISTINCT | NONNULL | IMMUTABLE;
+  }
+
+  /*
+   * (non-Javadoc)
+   * 
+   * @see java.util.Spliterator#estimateSize()
+   */
+  @Override
+  public long estimateSize() {
+    return buffer.hasRemaining() ? Long.MAX_VALUE : 0;
+  }
+
+  /*
+   * (non-Javadoc)
+   * 
+   * @see org.fixtrading.silverflash.buffer.FrameSpliterator#hasRemaining()
+   */
+  @Override
+  public boolean hasRemaining() {
+    return buffer.remaining() > 0;
+  }
+
+  /*
+   * (non-Javadoc)
+   * 
    * @see java.util.Spliterator#tryAdvance(java.util.function.Consumer)
    */
   @Override
   public boolean tryAdvance(Consumer<? super ByteBuffer> action) {
     Objects.requireNonNull(action);
-    int offset = buffer.position();
-
     int messageOffset = offset + SofhFrameDecoder.HEADER_LENGTH;
     if (messageOffset > buffer.limit()) {
       return false;
@@ -72,11 +103,16 @@ public class SofhFrameSpliterator implements FrameSpliterator {
 
     action.accept(message);
     buffer.position(messageLimit);
+    // offset is set to same value as position, but can't depend on position not being altered by
+    // app
+    offset = messageLimit;
     buffer.order(originalByteOrder);
     return true;
   }
 
-  /* (non-Javadoc)
+  /*
+   * (non-Javadoc)
+   * 
    * @see java.util.Spliterator#trySplit()
    */
   @Override
@@ -84,38 +120,17 @@ public class SofhFrameSpliterator implements FrameSpliterator {
     return null;
   }
 
-  /* (non-Javadoc)
-   * @see java.util.Spliterator#estimateSize()
-   */
-  @Override
-  public long estimateSize() {
-    return buffer.hasRemaining() ? Long.MAX_VALUE : 0;
-  }
-
-  /* (non-Javadoc)
-   * @see java.util.Spliterator#characteristics()
-   */
-  @Override
-  public int characteristics() {
-    return DISTINCT | NONNULL | IMMUTABLE;
-  }
-
-  /* (non-Javadoc)
+  /*
+   * (non-Javadoc)
+   * 
    * @see org.fixtrading.silverflash.buffer.FrameSpliterator#wrap(java.nio.ByteBuffer)
    */
   @Override
   public void wrap(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     this.buffer = buffer;
+    this.offset = buffer.position();
     this.originalByteOrder = buffer.order();
-  }
-
-  /* (non-Javadoc)
-   * @see org.fixtrading.silverflash.buffer.FrameSpliterator#hasRemaining()
-   */
-  @Override
-  public boolean hasRemaining() {
-    return buffer.remaining() > 0;
   }
 
 }

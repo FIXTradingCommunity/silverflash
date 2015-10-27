@@ -444,7 +444,7 @@ public class MessageDecoder {
     }
   }
 
-  private static final int FIRST_FIELD_OFFSET = MessageHeaderWithFrame.getLength();
+  private static final int FIRST_FIELD_OFFSET = SbeMessageHeaderDecoder.getLength();
 
   private final ThreadLocal<Optional<Decoder>> context = new ThreadLocal<Optional<Decoder>>() {
     @Override
@@ -488,10 +488,10 @@ public class MessageDecoder {
     }
   };
 
-  private final ThreadLocal<MessageHeaderWithFrame> messageHeader = new ThreadLocal<MessageHeaderWithFrame>() {
+  private final ThreadLocal<SbeMessageHeaderDecoder> messageHeader = new ThreadLocal<SbeMessageHeaderDecoder>() {
     @Override
-    protected MessageHeaderWithFrame initialValue() {
-      return new MessageHeaderWithFrame();
+    protected SbeMessageHeaderDecoder initialValue() {
+      return new SbeMessageHeaderDecoder();
     }
   };
 
@@ -566,8 +566,8 @@ public class MessageDecoder {
   };
 
   public Optional<Decoder> attachForDecode(ByteBuffer buffer, int offset) {
-    MessageHeaderWithFrame header = messageHeader.get();
-    int schema = header.attachForDecode(buffer, offset).getSchemaId();
+    SbeMessageHeaderDecoder header = messageHeader.get();
+    int schema = header.wrap(buffer, offset).getSchemaId();
     if (schema != SessionMessageSchema.SCHEMA_ID) {
       return Optional.empty();
     }

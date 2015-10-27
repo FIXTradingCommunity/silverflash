@@ -14,31 +14,25 @@
  * limitations under the License.
  *
  */
-package org.fixtrading.silverflash.frame.sofh;
+package org.fixtrading.silverflash.frame;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Objects;
 
-import org.fixtrading.silverflash.frame.MessageFrameEncoder;
-
 /**
- * FIX Simple Open Framing Header encoder
+ * Encodes a message length prefix to delimit a message frame
  * 
  * @author Don Mendelson
  *
  */
-public class SofhFrameEncoder implements MessageFrameEncoder {
+public class MessageLengthFrameEncoder implements MessageFrameEncoder {
 
-  private static final int ENCODING_OFFSET = 4;
-  private static final int HEADER_LENGTH = 6;
+  private static final int HEADER_LENGTH = 2;
   private static final int MESSAGE_LENGTH_OFFSET = 0;
 
   private ByteBuffer buffer;
-  private short encoding = Encoding.SBE_1_0_LITTLE_ENDIAN.getCode();
   private int frameStartOffset = 0;
   private long messageLength = -1;
-  private ByteOrder originalByteOrder;
 
   /*
    * (non-Javadoc)
@@ -47,11 +41,8 @@ public class SofhFrameEncoder implements MessageFrameEncoder {
    */
   @Override
   public MessageFrameEncoder encodeFrameHeader() {
-    buffer.order(ByteOrder.BIG_ENDIAN);
-    buffer.putInt(frameStartOffset + MESSAGE_LENGTH_OFFSET, (int) (messageLength & 0xffffffff));
-    buffer.putShort(frameStartOffset + ENCODING_OFFSET, encoding);
+    buffer.putShort(frameStartOffset + MESSAGE_LENGTH_OFFSET, (short) (messageLength & 0xffffffff));
     buffer.position(frameStartOffset + HEADER_LENGTH);
-    buffer.order(originalByteOrder);
     return this;
   }
 
@@ -62,16 +53,8 @@ public class SofhFrameEncoder implements MessageFrameEncoder {
    */
   @Override
   public MessageFrameEncoder encodeFrameTrailer() {
-    buffer.order(ByteOrder.BIG_ENDIAN);
-    buffer.putInt(frameStartOffset + MESSAGE_LENGTH_OFFSET, (int) (messageLength & 0xffffffff));
-    buffer.putShort(frameStartOffset + ENCODING_OFFSET, encoding);
+    buffer.putShort(frameStartOffset + MESSAGE_LENGTH_OFFSET, (short) (messageLength & 0xffffffff));
     buffer.position(frameStartOffset + HEADER_LENGTH + (int) messageLength);
-    buffer.order(originalByteOrder);
-    return this;
-  }
-
-  public MessageFrameEncoder setEncoding(short code) {
-    this.encoding = code;
     return this;
   }
 
@@ -95,7 +78,6 @@ public class SofhFrameEncoder implements MessageFrameEncoder {
   public MessageFrameEncoder wrap(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     this.buffer = buffer;
-    this.originalByteOrder = buffer.order();
     this.frameStartOffset = buffer.position();
     messageLength = -1;
     return this;

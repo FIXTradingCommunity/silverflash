@@ -19,6 +19,8 @@ package org.fixtrading.silverflash.fixp.messages;
 
 import java.nio.ByteBuffer;
 
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
+
 /**
  * Factory for encoders of session messages
  * 
@@ -53,18 +55,27 @@ public class MessageEncoder {
   abstract static class Encoder {
 
     protected ByteBuffer buffer;
+    protected MessageFrameEncoder frameEncoder;
     protected int offset;
     protected int variableLength = 0;
 
-    Encoder attachForEncode(ByteBuffer buffer, int offset) {
+    Encoder attachForEncode(ByteBuffer buffer, int offset, MessageFrameEncoder frameEncoder,
+        SbeMessageHeaderEncoder sbeMessageHeaderEncoder) {
       this.buffer = buffer;
       this.offset = offset;
+      this.frameEncoder = frameEncoder;
       this.variableLength = resetVariableLength();
 
       final int messageLength = getMessageLength();
-      MessageHeaderWithFrame.encode(buffer, offset, getBlockLength(), getMessageType().getCode(),
-          SessionMessageSchema.SCHEMA_ID, SessionMessageSchema.SCHEMA_VERSION, messageLength);
-      buffer.position(offset + messageLength);
+      frameEncoder.wrap(buffer);
+      frameEncoder.setMessageLength(messageLength);
+      frameEncoder.encodeFrameHeader();
+
+      sbeMessageHeaderEncoder.wrap(buffer, offset + frameEncoder.getHeaderLength());
+      sbeMessageHeaderEncoder.setBlockLength(getBlockLength())
+          .setTemplateId(getMessageType().getCode()).setSchemaId(SessionMessageSchema.SCHEMA_ID)
+          .getSchemaVersion(SessionMessageSchema.SCHEMA_VERSION);
+
       return this;
     }
 
@@ -102,13 +113,15 @@ public class MessageEncoder {
       buffer.put(credentials, offset + FIRST_FIELD_OFFSET + getBlockLength() + 2,
           credentials.length);
       this.variableLength = credentials.length + 2;
-      MessageHeaderWithFrame.encodeMessageLength(buffer, offset, getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
     public EstablishEncoder setCredentialsNull() {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) 0);
-      MessageHeaderWithFrame.encodeMessageLength(buffer, offset, getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
@@ -204,13 +217,15 @@ public class MessageEncoder {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) reason.length);
       buffer.put(reason, offset + FIRST_FIELD_OFFSET + getBlockLength() + 2, reason.length);
       this.variableLength = reason.length + 2;
-      MessageHeaderWithFrame.encodeMessageLength(buffer, offset, getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
     public EstablishmentRejectEncoder setReasonNull() {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) 0);
-      MessageHeaderWithFrame.encodeMessageLength(buffer, offset, getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
@@ -295,8 +310,8 @@ public class MessageEncoder {
       buffer.position(offset + FIRST_FIELD_OFFSET + getBlockLength() + 2);
       buffer.put(credentials, 0, credentials.length);
       this.variableLength = credentials.length + 2;
-      MessageHeaderWithFrame.encodeMessageLength(buffer, offset, getMessageLength());
-      buffer.position(offset + getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
@@ -336,13 +351,15 @@ public class MessageEncoder {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) reason.length);
       buffer.put(reason, offset + FIRST_FIELD_OFFSET + getBlockLength() + 2, reason.length);
       this.variableLength = reason.length + 2;
-      MessageHeaderWithFrame.encodeMessageLength(buffer, offset, getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
     public NegotiationRejectEncoder setReasonNull() {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) 0);
-      MessageHeaderWithFrame.encodeMessageLength(buffer, offset, getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
@@ -515,13 +532,15 @@ public class MessageEncoder {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) reason.length);
       buffer.put(reason, offset + FIRST_FIELD_OFFSET + getBlockLength() + 2, reason.length);
       this.variableLength = reason.length + 2;
-      MessageHeaderWithFrame.encodeMessageLength(buffer, offset, getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
     public TerminateEncoder setReasonNull() {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) 0);
-      MessageHeaderWithFrame.encodeMessageLength(buffer, offset, getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
@@ -552,10 +571,10 @@ public class MessageEncoder {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(),
           (short) classification.length);
       buffer.position(offset + FIRST_FIELD_OFFSET + getBlockLength() + 2);
-      buffer.put(classification, 0,
-          classification.length);
+      buffer.put(classification, 0, classification.length);
       this.variableLength = classification.length + 2;
-      MessageHeaderWithFrame.encodeMessageLength(buffer, offset, getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
@@ -584,7 +603,7 @@ public class MessageEncoder {
     }
   }
 
-  private static final int FIRST_FIELD_OFFSET = MessageHeaderWithFrame.getLength();
+  private static final int FIRST_FIELD_OFFSET = SbeMessageHeaderDecoder.getLength();
 
   private static final long NULL_U64 = 0xffffffffffffffffL;
 
@@ -630,6 +649,19 @@ public class MessageEncoder {
     }
   };
 
+  private final ThreadLocal<MessageFrameEncoder> messageFrameEncoder = new ThreadLocal<MessageFrameEncoder>() {
+    @Override
+    protected MessageFrameEncoder initialValue() {
+      try {
+        return messageFrameEncoderClass.newInstance();
+      } catch (InstantiationException | IllegalAccessException e) {
+        throw new RuntimeException(e);
+      }
+    }
+  };
+
+  private Class<? extends MessageFrameEncoder> messageFrameEncoderClass;
+
   private final ThreadLocal<NegotiateEncoder> negotiateEncoder = new ThreadLocal<NegotiateEncoder>() {
     @Override
     protected NegotiateEncoder initialValue() {
@@ -672,6 +704,13 @@ public class MessageEncoder {
     }
   };
 
+  private final ThreadLocal<SbeMessageHeaderEncoder> sbeMessageHeaderEncoder = new ThreadLocal<SbeMessageHeaderEncoder>() {
+    @Override
+    protected SbeMessageHeaderEncoder initialValue() {
+      return new SbeMessageHeaderEncoder();
+    }
+  };
+
   private final ThreadLocal<SequenceEncoder> sequenceEncoder = new ThreadLocal<SequenceEncoder>() {
     @Override
     protected SequenceEncoder initialValue() {
@@ -686,6 +725,13 @@ public class MessageEncoder {
     }
   };
 
+  private final ThreadLocal<TopicEncoder> topicEncoder = new ThreadLocal<TopicEncoder>() {
+    @Override
+    protected TopicEncoder initialValue() {
+      return new TopicEncoder();
+    }
+  };
+
   private final ThreadLocal<UnsequencedHeartbeatEncoder> unsequencedHeartbeatEncoder = new ThreadLocal<UnsequencedHeartbeatEncoder>() {
     @Override
     protected UnsequencedHeartbeatEncoder initialValue() {
@@ -693,12 +739,13 @@ public class MessageEncoder {
     }
   };
 
-  private final ThreadLocal<TopicEncoder> topicEncoder = new ThreadLocal<TopicEncoder>() {
-    @Override
-    protected TopicEncoder initialValue() {
-      return new TopicEncoder();
-    }
-  };
+  /**
+   * @param messageFrameEncoderClass
+   */
+  public MessageEncoder(Class<? extends MessageFrameEncoder> messageFrameEncoderClass) {
+    this.messageFrameEncoderClass = messageFrameEncoderClass;
+  }
+
   /**
    * Creates a new encoder for the specified message type and attaches it to a buffer
    * 
@@ -766,7 +813,8 @@ public class MessageEncoder {
       throw new RuntimeException("Internal error");
     }
 
-    encoder.attachForEncode(buffer, offset);
+    encoder.attachForEncode(buffer, offset, messageFrameEncoder.get(),
+        sbeMessageHeaderEncoder.get());
     return encoder;
   }
 

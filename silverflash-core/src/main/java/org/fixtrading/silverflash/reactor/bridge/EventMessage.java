@@ -20,7 +20,9 @@ package org.fixtrading.silverflash.reactor.bridge;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.reactor.Topic;
 import org.fixtrading.silverflash.reactor.Topics;
 
@@ -32,73 +34,84 @@ import org.fixtrading.silverflash.reactor.Topics;
  */
 class EventMessage {
 
+  public static final int MESSAGE_TYPE = 1;
   public static final int SCHEMA_ID = 32001;
   public static final int SCHEMA_VERSION = 0;
-  public static final int MESSAGE_TYPE = 1;
 
   private ByteBuffer buffer;
+  private final MessageLengthFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
   private int offset;
+  private final SbeMessageHeaderDecoder sbeDecoder = new SbeMessageHeaderDecoder();
+  private final SbeMessageHeaderEncoder sbeMessageHeaderEncoder = new SbeMessageHeaderEncoder();
   private int variableLength = 0;
-  private final MessageHeaderWithFrame header = new MessageHeaderWithFrame();
-
-  public EventMessage attachForEncode(ByteBuffer buffer, int offset) {
-    this.buffer = buffer;
-    this.offset = offset;
-
-    MessageHeaderWithFrame.encode(buffer, offset, 0, MESSAGE_TYPE, SCHEMA_ID, SCHEMA_VERSION, 0);
-    buffer.position(MessageHeaderWithFrame.getLength());
-    variableLength = 0;
-    return this;
-  }
-
-  public EventMessage setTopic(Topic topic) throws UnsupportedEncodingException {
-    byte[] bytes = topic.toString().getBytes("UTF-8");
-    buffer.putShort(offset + MessageHeaderWithFrame.getLength(), (short) bytes.length);
-    buffer.position(offset + MessageHeaderWithFrame.getLength() + 2);
-    buffer.put(bytes, 0, bytes.length);
-    this.variableLength = bytes.length + 2;
-    return this;
-  }
-
-  public EventMessage setPayload(ByteBuffer payload) {
-    final int length = payload.remaining();
-    buffer.putShort(offset + MessageHeaderWithFrame.getLength() + this.variableLength,
-        (short) length);
-    buffer.position(offset + MessageHeaderWithFrame.getLength() + this.variableLength + 2);
-    buffer.put(payload);
-    this.variableLength += (length + 2);
-    MessageHeaderWithFrame.encodeMessageLength(buffer, offset, MessageHeaderWithFrame.getLength()
-        + variableLength);
-    return this;
-  }
 
   public EventMessage attachForDecode(ByteBuffer buffer, int offset) {
     this.buffer = buffer;
     this.offset = offset;
-    header.attachForDecode(buffer, offset);
-    if (MESSAGE_TYPE != header.getTemplateId() && SCHEMA_ID != header.getSchemaId()) {
+    sbeDecoder.wrap(buffer, offset);
+    if (MESSAGE_TYPE != sbeDecoder.getTemplateId() && SCHEMA_ID != sbeDecoder.getSchemaId()) {
       return null;
     }
-    buffer.position(MessageHeaderWithFrame.getLength());
+    buffer.position(SbeMessageHeaderDecoder.getLength());
     variableLength = 0;
     return this;
   }
 
+  public EventMessage attachForEncode(ByteBuffer buffer, int offset) {
+    this.buffer = buffer;
+    this.offset = offset;
+   
+    frameEncoder.wrap(buffer);
+    frameEncoder.encodeFrameHeader();
+
+    sbeMessageHeaderEncoder.wrap(buffer, offset + frameEncoder.getHeaderLength());
+    sbeMessageHeaderEncoder.setBlockLength(0)
+        .setTemplateId(MESSAGE_TYPE).setSchemaId(SCHEMA_ID)
+        .getSchemaVersion(SCHEMA_VERSION);
+
+    
+    variableLength = 0;
+    return this;
+  }
+
+  public EventMessage getPayload(ByteBuffer payload) {
+    short length = buffer.getShort(offset + SbeMessageHeaderDecoder.getLength() + variableLength);
+    buffer.position(offset + SbeMessageHeaderDecoder.getLength() + this.variableLength + 2);
+    payload.clear();
+    payload.put(buffer);
+    return this;
+  }
+
   public Topic getTopic() throws UnsupportedEncodingException {
-    short length = buffer.getShort(offset + MessageHeaderWithFrame.getLength());
+    short length = buffer.getShort(offset + SbeMessageHeaderDecoder.getLength());
     this.variableLength += (length + 2);
-    buffer.position(offset + MessageHeaderWithFrame.getLength() + 2);
+    buffer.position(offset + SbeMessageHeaderDecoder.getLength() + 2);
     byte[] dest = new byte[length];
     buffer.get(dest, 0, length);
     String s = new String(dest, "UTF-8");
     return Topics.parse(s);
   }
 
-  public EventMessage getPayload(ByteBuffer payload) {
-    short length = buffer.getShort(offset + MessageHeaderWithFrame.getLength() + variableLength);
-    buffer.position(offset + MessageHeaderWithFrame.getLength() + this.variableLength + 2);
-    payload.clear();
-    payload.put(buffer);
+  public EventMessage setPayload(ByteBuffer payload) {
+    final int length = payload.remaining();
+    buffer.putShort(offset + SbeMessageHeaderDecoder.getLength() + this.variableLength,
+        (short) length);
+    buffer.position(offset + SbeMessageHeaderDecoder.getLength() + this.variableLength + 2);
+    buffer.put(payload);
+    this.variableLength += (length + 2);
+    frameEncoder.setMessageLength(SbeMessageHeaderDecoder.getLength()
+        + variableLength);
+    frameEncoder.encodeFrameTrailer();
+
+    return this;
+  }
+
+  public EventMessage setTopic(Topic topic) throws UnsupportedEncodingException {
+    byte[] bytes = topic.toString().getBytes("UTF-8");
+    buffer.putShort(offset + SbeMessageHeaderDecoder.getLength(), (short) bytes.length);
+    buffer.position(offset + SbeMessageHeaderDecoder.getLength() + 2);
+    buffer.put(bytes, 0, bytes.length);
+    this.variableLength = bytes.length + 2;
     return this;
   }
 }

@@ -17,15 +17,13 @@
 
 package org.fixtrading.silverflash.frame;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.function.Consumer;
 
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeader;
-import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
-import org.fixtrading.silverflash.frame.sofh.SofhFrameEncoder;
 import org.junit.Before;
 import org.junit.Test;
 

@@ -28,14 +28,6 @@ import java.util.Spliterator;
  */
 public interface FrameSpliterator extends Spliterator<ByteBuffer> {
 
-
-  /**
-   * Set buffer to delimit
-   * 
-   * @param buffer a buffer containing message frames
-   */
-  void wrap(ByteBuffer buffer);
-
   /**
    * Returns whether a buffer contains any remaining full or partial frames
    * 
@@ -43,5 +35,12 @@ public interface FrameSpliterator extends Spliterator<ByteBuffer> {
    */
   boolean hasRemaining();
 
+  /**
+   * Set buffer to delimit
+   * 
+   * @param buffer
+   *          a buffer containing message frames
+   */
+  void wrap(ByteBuffer buffer);
 
 }

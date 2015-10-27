@@ -50,7 +50,7 @@ public interface MessageFrameEncoder {
    *          size of the message contained by this frame
    * @return this MessageFrameEncoder
    */
-  MessageFrameEncoder setMessageLength(int messageLength);
+  MessageFrameEncoder setMessageLength(long messageLength);
 
   /**
    * Attach a buffer to encode a message frame. Assumes that the frame starts at current position in
@@ -64,4 +64,10 @@ public interface MessageFrameEncoder {
    * @return this MessageFrameEncoder
    */
   MessageFrameEncoder wrap(ByteBuffer buffer);
+
+  /**
+   * Returns the length of a frame header
+   * @return the length of a header
+   */
+  int getHeaderLength();
 }

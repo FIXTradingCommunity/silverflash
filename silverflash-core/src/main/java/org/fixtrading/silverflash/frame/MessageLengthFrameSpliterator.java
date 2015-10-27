@@ -23,8 +23,6 @@ import java.util.Objects;
 import java.util.Spliterator;
 import java.util.function.Consumer;
 
-import org.fixtrading.silverflash.frame.sofh.SofhFrameDecoder;
-
 /**
  * Splits and iterates message frames within a buffer
  * <p>
@@ -37,18 +35,21 @@ public class MessageLengthFrameSpliterator implements FrameSpliterator {
 
   private ByteBuffer buffer;
   private MessageLengthFrameDecoder decoder = new MessageLengthFrameDecoder();
+  private int offset;
   private ByteOrder originalByteOrder;
 
   /**
    * Construct this FixpWithMessageLengthFrameSpliterator without a buffer Must call
    * {@link #wrap(ByteBuffer)} to use this object.
    */
-  public MessageLengthFrameSpliterator() {}
+  public MessageLengthFrameSpliterator() {
+  }
 
   /**
    * Construct this FixpWithMessageLengthFrameSpliterator with a buffer
    * 
-   * @param buffer buffer holding message frames
+   * @param buffer
+   *          buffer holding message frames
    */
   public MessageLengthFrameSpliterator(ByteBuffer buffer) {
     wrap(buffer);
@@ -64,23 +65,13 @@ public class MessageLengthFrameSpliterator implements FrameSpliterator {
     return buffer.hasRemaining() ? Long.MAX_VALUE : 0;
   }
 
-  /**
-   * Set a buffer to split into frames. Assumes that the first frame is at current position in the
-   * buffer.
-   * 
-   * @param buffer buffer holding message frames
-   */
-  public void wrap(ByteBuffer buffer) {
-    Objects.requireNonNull(buffer);
-    this.buffer = buffer;
-    this.originalByteOrder = buffer.order();
+  public boolean hasRemaining() {
+    return buffer.remaining() > 0;
   }
 
   @Override
   public boolean tryAdvance(Consumer<? super ByteBuffer> action) {
     Objects.requireNonNull(action);
-    int offset = buffer.position();
-
     int messageOffset = offset + MessageLengthFrameDecoder.HEADER_LENGTH;
     if (messageOffset > buffer.limit()) {
       return false;
@@ -103,13 +94,23 @@ public class MessageLengthFrameSpliterator implements FrameSpliterator {
     return true;
   }
 
-  public boolean hasRemaining() {
-    return buffer.remaining() > 0;
- }
-
   @Override
   public Spliterator<ByteBuffer> trySplit() {
     return null;
+  }
+
+  /**
+   * Set a buffer to split into frames. Assumes that the first frame is at current position in the
+   * buffer.
+   * 
+   * @param buffer
+   *          buffer holding message frames
+   */
+  public void wrap(ByteBuffer buffer) {
+    Objects.requireNonNull(buffer);
+    this.buffer = buffer;
+    this.offset = buffer.position();
+    this.originalByteOrder = buffer.order();
   }
 
 }

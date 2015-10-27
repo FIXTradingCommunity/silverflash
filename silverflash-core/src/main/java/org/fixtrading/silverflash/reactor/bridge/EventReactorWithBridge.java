@@ -25,14 +25,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.function.BiFunction;
 import java.util.function.Consumer;
+
 import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.buffer.BufferSupplier;
-import org.fixtrading.silverflash.buffer.FrameSpliterator;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
-import org.fixtrading.silverflash.fixp.frame.FixpWithMessageLengthFrameSpliterator;
+import org.fixtrading.silverflash.frame.FrameSpliterator;
+import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
 import org.fixtrading.silverflash.reactor.Dispatcher;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
@@ -125,7 +125,7 @@ public class EventReactorWithBridge extends EventReactor<ByteBuffer> {
   private ExceptionConsumer exceptionConsumer = ex -> {
     System.err.println(ex);
   };
-  private final FrameSpliterator frameSpliter = new FixpWithMessageLengthFrameSpliterator();
+  private final FrameSpliterator frameSpliter = new MessageLengthFrameSpliterator();
 
   private final Consumer<? super ByteBuffer> inboundReceiver = new Consumer<ByteBuffer>() {
 
