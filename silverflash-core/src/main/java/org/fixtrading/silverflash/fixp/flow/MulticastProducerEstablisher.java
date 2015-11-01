@@ -47,7 +47,7 @@ import org.fixtrading.silverflash.transport.Transport;
 public class MulticastProducerEstablisher implements Sender, Establisher, FlowReceiver, FlowSender {
   public static final int DEFAULT_OUTBOUND_KEEPALIVE_INTERVAL = 5000;
 
-  private final MessageEncoder messageEncoder = new MessageEncoder();
+  private final MessageEncoder messageEncoder;
   private final FlowType outboundFlow;
   private int outboundKeepaliveInterval = DEFAULT_OUTBOUND_KEEPALIVE_INTERVAL;
   private final EventReactor<ByteBuffer> reactor;
@@ -68,7 +68,7 @@ public class MulticastProducerEstablisher implements Sender, Establisher, FlowRe
    * @param topic 
    */
   public MulticastProducerEstablisher(EventReactor<ByteBuffer> reactor, Transport transport,
-      FlowType outboundFlow, String topic, UUID sessionId) {
+      FlowType outboundFlow, String topic, UUID sessionId, MessageEncoder messageEncoder) {
     Objects.requireNonNull(transport);
     Objects.requireNonNull(topic);
     this.reactor = reactor;
@@ -78,6 +78,7 @@ public class MulticastProducerEstablisher implements Sender, Establisher, FlowRe
     this.sessionId = sessionId;
     this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
     terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
+    this.messageEncoder = messageEncoder;
   }
 
   @Override
@@ -140,7 +141,7 @@ public class MulticastProducerEstablisher implements Sender, Establisher, FlowRe
 
    void topic() throws IOException {
      TopicEncoder topicEncoder =
-        (TopicEncoder) messageEncoder.attachForEncode(sessionMessageBuffer, 0,
+        (TopicEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
             MessageType.TOPIC);
      topicEncoder.setSessionId(uuidAsBytes);
      topicEncoder.setFlow(outboundFlow);

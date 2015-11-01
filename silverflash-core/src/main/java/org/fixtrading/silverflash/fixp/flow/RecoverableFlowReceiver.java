@@ -17,34 +17,28 @@
 
 package org.fixtrading.silverflash.fixp.flow;
 
-import static org.fixtrading.silverflash.fixp.SessionEventTopics.FromSessionEventType.*;
-import static org.fixtrading.silverflash.fixp.SessionEventTopics.ServiceEventType.*;
-import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.*;
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.FromSessionEventType.SESSION_FINISHED;
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.ServiceEventType.SERVICE_STORE_RETREIVE;
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.PEER_HEARTBEAT;
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.PEER_TERMINATED;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.Sequenced;
-import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.SessionId;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.RetransmissionDecoder;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.SequenceDecoder;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder.RetransmissionRequestEncoder;
-import org.fixtrading.silverflash.reactor.EventReactor;
+import org.fixtrading.silverflash.fixp.messages.MessageType;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;
@@ -55,7 +49,21 @@ import org.fixtrading.silverflash.reactor.Topic;
  * @author Don Mendelson
  *
  */
-public class RecoverableFlowReceiver implements Sequenced, FlowReceiver {
+public class RecoverableFlowReceiver extends AbstractReceiverFlow
+    implements Sequenced, FlowReceiver {
+
+  @SuppressWarnings("rawtypes")
+  public static class Builder<T extends RecoverableFlowReceiver, B extends FlowReceiverBuilder<RecoverableFlowReceiver, B>>
+      extends AbstractReceiverFlow.Builder implements FlowReceiverBuilder {
+
+    public RecoverableFlowReceiver build() {
+      return new RecoverableFlowReceiver(this);
+    }
+  }
+
+  public static Builder<RecoverableFlowReceiver, ? extends FlowReceiverBuilder> builder() {
+    return new Builder();
+  }
 
   private final Topic finishedTopic;
 
@@ -72,79 +80,57 @@ public class RecoverableFlowReceiver implements Sequenced, FlowReceiver {
   private long lastRequestTimestamp = 0L;
   private long lastRetransSeqNoToAccept = 0;
   private final MessageDecoder messageDecoder = new MessageDecoder();
-  private final MessageEncoder messageEncoder = new MessageEncoder();
   private final AtomicLong nextRetransSeqNoReceived = new AtomicLong(1);
   private final AtomicLong nextSeqNoAccepted = new AtomicLong(1);
   private final AtomicLong nextSeqNoReceived = new AtomicLong(1);
-  private final EventReactor<ByteBuffer> reactor;
-  private final ByteBuffer retransmissionRequestBuffer = ByteBuffer.allocateDirect(46).order(
-      ByteOrder.nativeOrder());
+  private final ByteBuffer retransmissionRequestBuffer = ByteBuffer.allocateDirect(46)
+      .order(ByteOrder.nativeOrder());
   private final RetransmissionRequestEncoder retransmissionRequestEncoder;
   private final byte[] retransSessionId = new byte[16];
   private final Topic retrieveTopic;
-  private final Session<UUID> session;
-  private final UUID sessionId;
-  private final MessageConsumer<UUID> streamReceiver;
   private final Topic terminatedTopic;
-  private final byte[] uuidAsBytes;
 
-  /**
-   * Constructor
-   * 
-   * @param reactor an EventReactor
-   * @param session a session using this flow
-   * @param streamReceiver a consumer of application messages
-   * @param inboundKeepaliveInterval expected heartbeat interval
-   */
-  public RecoverableFlowReceiver(EventReactor<ByteBuffer> reactor, Session<UUID> session,
-      MessageConsumer<UUID> streamReceiver, int inboundKeepaliveInterval) {
-    Objects.requireNonNull(session);
-    Objects.requireNonNull(streamReceiver);
-    this.reactor = reactor;
-    this.streamReceiver = streamReceiver;
-    this.session = session;
-    this.sessionId = session.getSessionId();
-    uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
-    retransmissionRequestEncoder =
-        (RetransmissionRequestEncoder) messageEncoder.attachForEncode(retransmissionRequestBuffer,
-            0, MessageType.RETRANSMIT_REQUEST);
-    retransmissionRequestBuffer.limit(MessageHeaderWithFrame.getLength()
-        + retransmissionRequestEncoder.getBlockLength());
+  protected RecoverableFlowReceiver(Builder builder) {
+    super(builder);
+    retransmissionRequestEncoder = (RetransmissionRequestEncoder) messageEncoder
+        .wrap(retransmissionRequestBuffer, 0, MessageType.RETRANSMIT_REQUEST);
+    retransmissionRequestBuffer
+        .limit(SbeMessageHeaderDecoder.getLength() + retransmissionRequestEncoder.getBlockLength());
     retrieveTopic = SessionEventTopics.getTopic(SERVICE_STORE_RETREIVE);
     terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
     finishedTopic = SessionEventTopics.getTopic(sessionId, SESSION_FINISHED);
 
     final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, PEER_HEARTBEAT);
     heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
-    heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, inboundKeepaliveInterval);
+    heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, keepaliveInterval);
   }
 
   public void accept(ByteBuffer buffer) {
-    Optional<Decoder> optDecoder = messageDecoder.attachForDecode(buffer, buffer.position());
+    Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
     // if not a known message type, assume it's an application
     // message
     boolean isApplicationMessage = true;
     if (optDecoder.isPresent()) {
       final Decoder decoder = optDecoder.get();
       switch (decoder.getMessageType()) {
-        case SEQUENCE:
-          accept((SequenceDecoder) decoder);
-          isApplicationMessage = false;
-          break;
-        case RETRANSMISSION:
-          accept((RetransmissionDecoder) decoder);
-          isApplicationMessage = false;
-          break;
-        case FINISHED_SENDING:
-          finished(buffer);
-          isApplicationMessage = false;
-          break;
-        case TERMINATE:
-          terminated(buffer);
-          isApplicationMessage = false;
-          break;
-        default:
-          System.err.println("Protocol violation");
+      case SEQUENCE:
+        accept((SequenceDecoder) decoder);
+        isApplicationMessage = false;
+        break;
+      case RETRANSMISSION:
+        accept((RetransmissionDecoder) decoder);
+        isApplicationMessage = false;
+        break;
+      case FINISHED_SENDING:
+        finished(buffer);
+        isApplicationMessage = false;
+        break;
+      case TERMINATE:
+        terminated(buffer);
+        isApplicationMessage = false;
+        break;
+      default:
+        System.err.println("Protocol violation");
       }
     }
     if (isApplicationMessage && !isEndOfStream) {
@@ -161,15 +147,6 @@ public class RecoverableFlowReceiver implements Sequenced, FlowReceiver {
         }
       }
     }
-  }
-
-  public long getNextSeqNo() {
-    return nextSeqNoReceived.get();
-  }
-
-  @Override
-  public boolean isHeartbeatDue() {
-    return isHeartbeatDue.getAndSet(true);
   }
 
   void accept(RetransmissionDecoder decoder) {
@@ -208,6 +185,21 @@ public class RecoverableFlowReceiver implements Sequenced, FlowReceiver {
     }
   }
 
+  private void finished(ByteBuffer buffer) {
+    isEndOfStream = true;
+    buffer.rewind();
+    reactor.post(finishedTopic, buffer);
+  }
+
+  public long getNextSeqNo() {
+    return nextSeqNoReceived.get();
+  }
+
+  @Override
+  public boolean isHeartbeatDue() {
+    return isHeartbeatDue.getAndSet(true);
+  }
+
   void notifyGap(long fromSeqNo, int count) {
     retransmissionRequestEncoder.setSessionId(uuidAsBytes);
     lastRequestTimestamp = System.nanoTime();
@@ -216,12 +208,6 @@ public class RecoverableFlowReceiver implements Sequenced, FlowReceiver {
     retransmissionRequestEncoder.setCount(count);
     // Post this to reactor for async message retrieval and retransmission
     reactor.post(retrieveTopic, retransmissionRequestBuffer);
-  }
-
-  private void finished(ByteBuffer buffer) {
-    isEndOfStream = true;
-    buffer.rewind();
-    reactor.post(finishedTopic, buffer);
   }
 
   private void terminated(ByteBuffer buffer) {

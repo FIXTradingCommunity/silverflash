@@ -565,7 +565,7 @@ public class MessageDecoder {
     }
   };
 
-  public Optional<Decoder> attachForDecode(ByteBuffer buffer, int offset) {
+  public Optional<Decoder> wrap(ByteBuffer buffer, int offset) {
     SbeMessageHeaderDecoder header = messageHeader.get();
     int schema = header.wrap(buffer, offset).getSchemaId();
     if (schema != SessionMessageSchema.SCHEMA_ID) {

@@ -21,14 +21,10 @@ import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventTyp
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.PEER_TERMINATED;
 
 import java.nio.ByteBuffer;
-import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.SessionId;
-import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;
@@ -39,7 +35,20 @@ import org.fixtrading.silverflash.reactor.Topic;
  * @author Don Mendelson
  *
  */
-public class NoneReceiver implements FlowReceiver {
+public class NoneFlowReceiver extends AbstractReceiverFlow implements FlowReceiver {
+
+  @SuppressWarnings("rawtypes")
+  public static class Builder<T extends NoneFlowReceiver, B extends FlowReceiverBuilder<NoneFlowReceiver, B>>
+      extends AbstractReceiverFlow.Builder implements FlowReceiverBuilder {
+
+    public NoneFlowReceiver build() {
+      return new NoneFlowReceiver(this);
+    }
+  }
+
+  public static Builder<NoneFlowReceiver, ? extends FlowReceiverBuilder> builder() {
+    return new Builder();
+  }
 
   private final Receiver heartbeatEvent = t -> {
     if (isHeartbeatDue()) {
@@ -51,28 +60,16 @@ public class NoneReceiver implements FlowReceiver {
   private final Subscription heartbeatSubscription;
   private boolean isEndOfStream = false;
   private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
-  private final EventReactor<ByteBuffer> reactor;
   private final Topic terminatedTopic;
-  private final byte[] uuidAsBytes;
 
-  /**
-   * Constructor
-   * 
-   * @param reactor an EventReactor
-   * @param sessionId unique session ID
-   * @param inboundKeepaliveInterval expected heartbeat interval
-   */
-  public NoneReceiver(EventReactor<ByteBuffer> reactor, UUID sessionId, int inboundKeepaliveInterval) {
-    Objects.requireNonNull(sessionId);
-
-    this.reactor = reactor;
-    uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
+  protected NoneFlowReceiver(Builder builder) {
+    super(builder);
     terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
 
-    if (inboundKeepaliveInterval != 0) {
+    if (keepaliveInterval != 0) {
       final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, PEER_HEARTBEAT);
       heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
-      heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, inboundKeepaliveInterval);
+      heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, keepaliveInterval);
     } else {
       // No inbound heartbeats if multicast
       heartbeatSubscription = null;

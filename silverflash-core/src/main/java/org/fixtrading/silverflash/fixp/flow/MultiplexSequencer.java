@@ -38,18 +38,17 @@ public class MultiplexSequencer implements Sequencer, MutableSequence {
   private long nextSeqNo;
   private final ByteBuffer contextBuffer = ByteBuffer.allocateDirect(34).order(
       ByteOrder.nativeOrder());
-  private final MessageEncoder messageEncoder = new MessageEncoder();
   private final ContextEncoder contextEncoder;
   private final BufferArrays arrays = new BufferArrays();
 
-  public MultiplexSequencer(byte[] uuidAsBytes) {
-    this(uuidAsBytes, 1);
+  public MultiplexSequencer(byte[] uuidAsBytes, MessageEncoder messageEncoder) {
+    this(uuidAsBytes, 1, messageEncoder);
   }
 
-  public MultiplexSequencer(byte[] uuidAsBytes, long nextSeqNo) {
+  public MultiplexSequencer(byte[] uuidAsBytes, long nextSeqNo, MessageEncoder messageEncoder) {
     this.nextSeqNo = nextSeqNo;
     contextEncoder =
-        (ContextEncoder) messageEncoder.attachForEncode(contextBuffer, 0, MessageType.CONTEXT);
+        (ContextEncoder) messageEncoder.wrap(contextBuffer, 0, MessageType.CONTEXT);
     contextEncoder.setSessionId(uuidAsBytes);
   }
 

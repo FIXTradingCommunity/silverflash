@@ -57,7 +57,7 @@ public class MessageSessionIdentifier implements Function<ByteBuffer, UUID> {
     int pos = buffer.position();
     boolean newSession = false;
     try {
-      Optional<Decoder> optDecoder = decoder.attachForDecode(buffer, pos);
+      Optional<Decoder> optDecoder = decoder.wrap(buffer, pos);
       if (optDecoder.isPresent()) {
         final Decoder decoder = optDecoder.get();
         switch (decoder.getMessageType()) {

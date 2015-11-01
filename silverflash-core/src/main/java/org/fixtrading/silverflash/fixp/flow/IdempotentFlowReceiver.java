@@ -23,9 +23,7 @@ import static org.fixtrading.silverflash.fixp.SessionEventTopics.ToSessionEventT
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -35,14 +33,12 @@ import org.fixtrading.silverflash.Sequenced;
 import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.ContextDecoder;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.SequenceDecoder;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder.NotAppliedEncoder;
-import org.fixtrading.silverflash.reactor.EventReactor;
+import org.fixtrading.silverflash.fixp.messages.MessageType;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;
@@ -53,8 +49,21 @@ import org.fixtrading.silverflash.reactor.Topic;
  * @author Don Mendelson
  *
  */
-public class IdempotentFlowReceiver implements FlowReceiver, Sequenced {
+public class IdempotentFlowReceiver extends AbstractReceiverFlow implements FlowReceiver, Sequenced {
 
+  @SuppressWarnings("rawtypes")
+  public static class Builder<T extends IdempotentFlowReceiver, B extends FlowReceiverBuilder<IdempotentFlowReceiver, B>>
+      extends AbstractReceiverFlow.Builder implements FlowReceiverBuilder  {
+
+    public IdempotentFlowReceiver build() {
+      return new IdempotentFlowReceiver(this);
+    }
+   }
+
+  public static  Builder<IdempotentFlowReceiver, ? extends FlowReceiverBuilder> builder() {
+    return new Builder();
+  }
+  
   private final Receiver heartbeatEvent = buffer -> {
     if (isHeartbeatDue()) {
       // **** terminated(null);
@@ -66,49 +75,27 @@ public class IdempotentFlowReceiver implements FlowReceiver, Sequenced {
   private boolean isEndOfStream = false;
   private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
   private final MessageDecoder messageDecoder = new MessageDecoder();
-  private final MessageEncoder messageEncoder = new MessageEncoder();
   private final AtomicLong nextSeqNoAccepted = new AtomicLong(1);
   private final AtomicLong nextSeqNoReceived = new AtomicLong(1);
   private final ByteBuffer notAppliedBuffer = ByteBuffer.allocateDirect(46)
       .order(ByteOrder.nativeOrder());
   private final NotAppliedEncoder notAppliedEncoder;
-  private final EventReactor<ByteBuffer> reactor;
-  private final Session<UUID> session;
-  private final UUID sessionId;
-  private final MessageConsumer<UUID> streamReceiver;
   private final Topic terminatedTopic;
   private final Topic toSendTopic;
 
-  /**
-   * Constructor
-   * 
-   * @param reactor
-   *          an EventReactor
-   * @param session
-   *          a session using this flow
-   * @param streamReceiver
-   *          a consumer of application messages
-   * @param inboundKeepaliveInterval
-   *          expected heartbeat interval
-   */
-  public IdempotentFlowReceiver(EventReactor<ByteBuffer> reactor, Session<UUID> session,
-      MessageConsumer<UUID> streamReceiver, int inboundKeepaliveInterval) {
-    Objects.requireNonNull(session);
-    Objects.requireNonNull(streamReceiver);
-    this.session = session;
-    this.sessionId = session.getSessionId();
-    this.reactor = reactor;
-    this.streamReceiver = streamReceiver;
-    notAppliedEncoder = (NotAppliedEncoder) messageEncoder.attachForEncode(notAppliedBuffer, 0,
+  @SuppressWarnings("rawtypes")
+  protected IdempotentFlowReceiver(Builder builder) {
+    super(builder);
+    notAppliedEncoder = (NotAppliedEncoder) messageEncoder.wrap(notAppliedBuffer, 0,
         MessageType.NOT_APPLIED);
-    notAppliedBuffer.limit(MessageHeaderWithFrame.getLength() + notAppliedEncoder.getBlockLength());
+    notAppliedBuffer.limit(SbeMessageHeaderDecoder.getLength() + notAppliedEncoder.getBlockLength());
     toSendTopic = SessionEventTopics.getTopic(sessionId, APPLICATION_MESSAGE_TO_SEND);
     terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
 
-    if (inboundKeepaliveInterval != 0) {
+    if (this.keepaliveInterval != 0) {
       final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, PEER_HEARTBEAT);
       heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
-      heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, inboundKeepaliveInterval);
+      heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, this.keepaliveInterval);
     } else {
       heartbeatSubscription = null;
       heartbeatSchedule = null;
@@ -116,7 +103,7 @@ public class IdempotentFlowReceiver implements FlowReceiver, Sequenced {
   }
 
   public void accept(ByteBuffer buffer) {
-    Optional<Decoder> optDecoder = messageDecoder.attachForDecode(buffer, buffer.position());
+    Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
 
     boolean isApplicationMessage = true;
     if (optDecoder.isPresent()) {

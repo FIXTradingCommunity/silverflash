@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+
 import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Receiver;
@@ -38,9 +39,10 @@ import org.fixtrading.silverflash.RecoverableSender;
 import org.fixtrading.silverflash.Sequenced;
 import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.buffer.BufferSupplier;
-import org.fixtrading.silverflash.buffer.FrameSpliterator;
 import org.fixtrading.silverflash.fixp.flow.ClientSessionEstablisher;
+import org.fixtrading.silverflash.fixp.flow.FlowBuilder;
 import org.fixtrading.silverflash.fixp.flow.FlowReceiver;
+import org.fixtrading.silverflash.fixp.flow.FlowReceiverBuilder;
 import org.fixtrading.silverflash.fixp.flow.FlowSender;
 import org.fixtrading.silverflash.fixp.flow.IdempotentFlowReceiver;
 import org.fixtrading.silverflash.fixp.flow.IdempotentFlowSender;
@@ -48,8 +50,8 @@ import org.fixtrading.silverflash.fixp.flow.MulticastConsumerEstablisher;
 import org.fixtrading.silverflash.fixp.flow.MulticastProducerEstablisher;
 import org.fixtrading.silverflash.fixp.flow.MultiplexSequencer;
 import org.fixtrading.silverflash.fixp.flow.MutableSequence;
-import org.fixtrading.silverflash.fixp.flow.NoneReceiver;
-import org.fixtrading.silverflash.fixp.flow.NoneSender;
+import org.fixtrading.silverflash.fixp.flow.NoneFlowSender;
+import org.fixtrading.silverflash.fixp.flow.NoneFlowReceiver;
 import org.fixtrading.silverflash.fixp.flow.RecoverableFlowReceiver;
 import org.fixtrading.silverflash.fixp.flow.RecoverableFlowSender;
 import org.fixtrading.silverflash.fixp.flow.Sequencer;
@@ -58,9 +60,11 @@ import org.fixtrading.silverflash.fixp.flow.SimplexSequencer;
 import org.fixtrading.silverflash.fixp.flow.SimplexStreamSequencer;
 import org.fixtrading.silverflash.fixp.flow.UnsequencedFlowReceiver;
 import org.fixtrading.silverflash.fixp.flow.UnsequencedFlowSender;
-import org.fixtrading.silverflash.fixp.frame.FixpWithMessageLengthFrameSpliterator;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
+import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
 import org.fixtrading.silverflash.fixp.store.MessageStore;
+import org.fixtrading.silverflash.frame.FrameSpliterator;
+import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.Topic;
@@ -351,7 +355,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
 
   private FlowReceiver flowReceiver;
   private FlowSender flowSender;
-  private FrameSpliterator frameSpliter = new FixpWithMessageLengthFrameSpliterator();
+  private FrameSpliterator frameSpliter = new MessageLengthFrameSpliterator();
   private boolean isMultiplexedTransport;
   private final MessageConsumer<UUID> messageConsumer;
 
@@ -441,6 +445,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
   };
 
   private byte[] uuidAsBytes;
+  private MessageEncoder messageEncoder;
 
   /**
    * Construct a session
@@ -517,7 +522,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
 
   private Establisher createClientEstablisher(byte[] credentials) {
     final ClientSessionEstablisher clientSessionEstablisher = new ClientSessionEstablisher(reactor,
-        outboundFlow, getTransport()).withCredentials(sessionId, credentials);
+        outboundFlow, getTransport(), messageEncoder).withCredentials(sessionId, credentials);
 
     Topic initTopic = SessionEventTopics.getTopic(sessionId, CLIENT_ESTABLISHED);
     establishedSubscription = reactor.subscribe(initTopic, new EstablishedHandler());
@@ -541,7 +546,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
    */
   private Establisher createMulticastProducerEstablisher(String topic) {
     final MulticastProducerEstablisher serverSessionEstablisher = new MulticastProducerEstablisher(
-        reactor, getTransport(), outboundFlow, topic, sessionId);
+        reactor, getTransport(), outboundFlow, topic, sessionId, messageEncoder);
 
     Topic initTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, new String(topic));
     establishedSubscription = reactor.subscribe(initTopic, new EstablishedHandler());
@@ -551,7 +556,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
 
   private Establisher createServerEstablisher() {
     final ServerSessionEstablisher serverSessionEstablisher = new ServerSessionEstablisher(reactor,
-        getTransport(), outboundFlow);
+        getTransport(), outboundFlow, messageEncoder);
 
     // Since subscription occurs before sessionId is available, use
     // transport hashCode
@@ -691,24 +696,25 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
   }
 
   private void setInboundStream() {
+    @SuppressWarnings("rawtypes")
+    FlowReceiverBuilder<? extends FlowReceiver, ? extends FlowReceiverBuilder> builder = null;
     switch (establisher.getInboundFlow()) {
     case UNSEQUENCED:
-      this.flowReceiver = new UnsequencedFlowReceiver(reactor, this, messageConsumer,
-          establisher.getInboundKeepaliveInterval());
+      builder = UnsequencedFlowReceiver.builder();
       break;
     case IDEMPOTENT:
-      this.flowReceiver = new IdempotentFlowReceiver(reactor, this, messageConsumer,
-          establisher.getInboundKeepaliveInterval());
+      builder = IdempotentFlowReceiver.builder();
       break;
     case RECOVERABLE:
-      this.flowReceiver = new RecoverableFlowReceiver(reactor, this, messageConsumer,
-          establisher.getInboundKeepaliveInterval());
+      builder = RecoverableFlowReceiver.builder();
       break;
     case NONE:
-      this.flowReceiver = new NoneReceiver(reactor, sessionId,
-          establisher.getInboundKeepaliveInterval());
+      builder = NoneFlowReceiver.builder();
       break;
     }
+    this.flowReceiver = (FlowReceiver) builder.withSession(this)
+        .withMessageConsumer(messageConsumer).withReactor(reactor)
+        .withKeepaliveInterval(establisher.getInboundKeepaliveInterval()).build();
   }
 
   public void setNextSeqNoToSend(long nextSeqNo) {
@@ -719,31 +725,39 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
   }
 
   private void setOutboundStream() {
+    @SuppressWarnings("rawtypes")
+    FlowBuilder builder = null;
     Sequencer sequencer;
     switch (establisher.getOutboundFlow()) {
     case UNSEQUENCED:
-      this.flowSender = new UnsequencedFlowSender(reactor, sessionId, getTransport(),
-          establisher.getOutboundKeepaliveInterval());
+      builder = UnsequencedFlowSender.builder();
       break;
     case IDEMPOTENT:
-      sequencer = isMultiplexedTransport ? new MultiplexSequencer(uuidAsBytes)
-          : (getTransport().isFifo() ? new SimplexStreamSequencer() : new SimplexSequencer());
+      builder = IdempotentFlowSender.builder();
+      sequencer = isMultiplexedTransport ? new MultiplexSequencer(uuidAsBytes, messageEncoder)
+          : (getTransport().isFifo() ? new SimplexStreamSequencer(messageEncoder)
+              : new SimplexSequencer(messageEncoder));
 
-      this.flowSender = new IdempotentFlowSender(reactor, sessionId, getTransport(),
-          establisher.getOutboundKeepaliveInterval(), sequencer);
+      builder.withSequencer(sequencer);
       break;
     case RECOVERABLE:
-      sequencer = isMultiplexedTransport ? new MultiplexSequencer(uuidAsBytes)
-          : (getTransport().isFifo() ? new SimplexStreamSequencer() : new SimplexSequencer());
+      RecoverableFlowSender.Builder abuilder = RecoverableFlowSender.builder();
+      sequencer = isMultiplexedTransport ? new MultiplexSequencer(uuidAsBytes, messageEncoder)
+          : (getTransport().isFifo() ? new SimplexStreamSequencer(messageEncoder)
+              : new SimplexSequencer(messageEncoder));
 
-      this.flowSender = new RecoverableFlowSender(reactor, store, sessionId, getTransport(),
-          establisher.getOutboundKeepaliveInterval(), sequencer);
+      abuilder.withMessageStore(store).withSequencer(sequencer);
+      builder = abuilder;
       break;
     case NONE:
-      this.flowSender = new NoneSender(reactor, sessionId, getTransport(),
-          establisher.getOutboundKeepaliveInterval());
+      builder = NoneFlowSender.builder();
       break;
     }
+
+    this.flowSender = (FlowSender) builder
+        .withKeepaliveInterval(establisher.getOutboundKeepaliveInterval()).withReactor(reactor)
+        .withSessionId(getSessionId()).withTransport(getTransport())
+        .withMessageEncoder(messageEncoder).build();
   }
 
   /*

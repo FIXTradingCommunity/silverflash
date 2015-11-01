@@ -66,16 +66,20 @@ public class MessageEncoder {
       this.frameEncoder = frameEncoder;
       this.variableLength = resetVariableLength();
 
-      final int messageLength = getMessageLength();
+      final int messageLength = getMessageLength() + SbeMessageHeaderEncoder.getLength();
       frameEncoder.wrap(buffer);
       frameEncoder.setMessageLength(messageLength);
       frameEncoder.encodeFrameHeader();
-
-      sbeMessageHeaderEncoder.wrap(buffer, offset + frameEncoder.getHeaderLength());
+      
+      this.offset += frameEncoder.getHeaderLength();
+      
+      sbeMessageHeaderEncoder.wrap(buffer, this.offset);
       sbeMessageHeaderEncoder.setBlockLength(getBlockLength())
           .setTemplateId(getMessageType().getCode()).setSchemaId(SessionMessageSchema.SCHEMA_ID)
           .getSchemaVersion(SessionMessageSchema.SCHEMA_VERSION);
 
+      this.offset += SbeMessageHeaderEncoder.getLength();
+      
       return this;
     }
 
@@ -110,17 +114,17 @@ public class MessageEncoder {
 
     public EstablishEncoder setCredentials(byte[] credentials) {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) credentials.length);
-      buffer.put(credentials, offset + FIRST_FIELD_OFFSET + getBlockLength() + 2,
-          credentials.length);
+      buffer.position(offset + FIRST_FIELD_OFFSET + getBlockLength() + 2);
+      buffer.put(credentials, 0, credentials.length);
       this.variableLength = credentials.length + 2;
-      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength() + SbeMessageHeaderEncoder.getLength());
       frameEncoder.encodeFrameTrailer();
       return this;
     }
 
     public EstablishEncoder setCredentialsNull() {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) 0);
-      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength() + SbeMessageHeaderEncoder.getLength());
       frameEncoder.encodeFrameTrailer();
       return this;
     }
@@ -172,11 +176,13 @@ public class MessageEncoder {
 
     public EstablishmentAckEncoder setNextSeqNo(long nextSeqNo) {
       buffer.putLong(offset + FIRST_FIELD_OFFSET + 28, nextSeqNo);
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
     public EstablishmentAckEncoder setNextSeqNoNull() {
       buffer.putLong(offset + FIRST_FIELD_OFFSET + 28, NULL_U64);
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
@@ -217,14 +223,14 @@ public class MessageEncoder {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) reason.length);
       buffer.put(reason, offset + FIRST_FIELD_OFFSET + getBlockLength() + 2, reason.length);
       this.variableLength = reason.length + 2;
-      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength() + SbeMessageHeaderEncoder.getLength());
       frameEncoder.encodeFrameTrailer();
       return this;
     }
 
     public EstablishmentRejectEncoder setReasonNull() {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) 0);
-      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength() + SbeMessageHeaderEncoder.getLength());
       frameEncoder.encodeFrameTrailer();
       return this;
     }
@@ -257,6 +263,7 @@ public class MessageEncoder {
       buffer.position(offset + FIRST_FIELD_OFFSET);
       buffer.put(uuid, 0, 16);
       buffer.position(offset + getMessageLength());
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
   }
@@ -274,6 +281,7 @@ public class MessageEncoder {
 
     public FinishedSendingEncoder setLastSeqNo(long lastSeqNo) {
       buffer.putLong(offset + FIRST_FIELD_OFFSET + 16, lastSeqNo);
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
@@ -310,7 +318,7 @@ public class MessageEncoder {
       buffer.position(offset + FIRST_FIELD_OFFSET + getBlockLength() + 2);
       buffer.put(credentials, 0, credentials.length);
       this.variableLength = credentials.length + 2;
-      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength() + SbeMessageHeaderEncoder.getLength());
       frameEncoder.encodeFrameTrailer();
       return this;
     }
@@ -351,14 +359,14 @@ public class MessageEncoder {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) reason.length);
       buffer.put(reason, offset + FIRST_FIELD_OFFSET + getBlockLength() + 2, reason.length);
       this.variableLength = reason.length + 2;
-      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength() + SbeMessageHeaderEncoder.getLength());
       frameEncoder.encodeFrameTrailer();
       return this;
     }
 
     public NegotiationRejectEncoder setReasonNull() {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) 0);
-      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength() + SbeMessageHeaderEncoder.getLength());
       frameEncoder.encodeFrameTrailer();
       return this;
     }
@@ -394,6 +402,7 @@ public class MessageEncoder {
 
     public NegotiationResponseEncoder setServerFlow(FlowType flowType) {
       buffer.put(offset + FIRST_FIELD_OFFSET + 24, flowType.getCode());
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
@@ -418,6 +427,7 @@ public class MessageEncoder {
 
     public NotAppliedEncoder setCount(int count) {
       buffer.putInt(offset + FIRST_FIELD_OFFSET + 8, count);
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
@@ -440,6 +450,7 @@ public class MessageEncoder {
 
     public RetransmissionEncoder setCount(int count) {
       buffer.putInt(offset + FIRST_FIELD_OFFSET + 32, count);
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
@@ -474,6 +485,7 @@ public class MessageEncoder {
 
     public RetransmissionRequestEncoder setCount(int count) {
       buffer.putInt(offset + FIRST_FIELD_OFFSET + 32, count);
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
 
@@ -508,6 +520,7 @@ public class MessageEncoder {
 
     public SequenceEncoder setNextSeqNo(long nextSeqNo) {
       buffer.putLong(offset + FIRST_FIELD_OFFSET, nextSeqNo);
+      frameEncoder.encodeFrameTrailer();
       return this;
     }
   }
@@ -532,14 +545,14 @@ public class MessageEncoder {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) reason.length);
       buffer.put(reason, offset + FIRST_FIELD_OFFSET + getBlockLength() + 2, reason.length);
       this.variableLength = reason.length + 2;
-      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength() + SbeMessageHeaderEncoder.getLength());
       frameEncoder.encodeFrameTrailer();
       return this;
     }
 
     public TerminateEncoder setReasonNull() {
       buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) 0);
-      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength() + SbeMessageHeaderEncoder.getLength());
       frameEncoder.encodeFrameTrailer();
       return this;
     }
@@ -573,7 +586,7 @@ public class MessageEncoder {
       buffer.position(offset + FIRST_FIELD_OFFSET + getBlockLength() + 2);
       buffer.put(classification, 0, classification.length);
       this.variableLength = classification.length + 2;
-      frameEncoder.setMessageLength(getMessageLength());
+      frameEncoder.setMessageLength(getMessageLength() + SbeMessageHeaderEncoder.getLength());
       frameEncoder.encodeFrameTrailer();
       return this;
     }
@@ -603,7 +616,7 @@ public class MessageEncoder {
     }
   }
 
-  private static final int FIRST_FIELD_OFFSET = SbeMessageHeaderDecoder.getLength();
+  private static final int FIRST_FIELD_OFFSET = 0;
 
   private static final long NULL_U64 = 0xffffffffffffffffL;
 
@@ -747,7 +760,7 @@ public class MessageEncoder {
   }
 
   /**
-   * Creates a new encoder for the specified message type and attaches it to a buffer
+   * Creates a new messageEncoder for the specified message type and attaches it to a buffer
    * 
    * @param buffer
    *          buffer to hold the message
@@ -755,9 +768,9 @@ public class MessageEncoder {
    *          index into the buffer to encode
    * @param messageType
    *          type of message
-   * @return an initialized encoder
+   * @return an initialized messageEncoder
    */
-  public Encoder attachForEncode(ByteBuffer buffer, int offset, MessageType messageType) {
+  public Encoder wrap(ByteBuffer buffer, int offset, MessageType messageType) {
 
     Encoder encoder;
     switch (messageType) {

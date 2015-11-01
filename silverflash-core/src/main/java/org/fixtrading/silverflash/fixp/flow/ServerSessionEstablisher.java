@@ -67,7 +67,7 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
   private FlowType inboundFlow;
   private int inboundKeepaliveInterval;
   private final MessageDecoder messageDecoder = new MessageDecoder();
-  private final MessageEncoder messageEncoder = new MessageEncoder();
+  private final MessageEncoder messageEncoder;
   private final FlowType outboundFlow;
   private int outboundKeepaliveInterval = DEFAULT_OUTBOUND_KEEPALIVE_INTERVAL;
   private final EventReactor<ByteBuffer> reactor;
@@ -87,18 +87,19 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
    * @param outboundFlow client flow type
    */
   public ServerSessionEstablisher(EventReactor<ByteBuffer> reactor, Transport transport,
-      FlowType outboundFlow) {
+      FlowType outboundFlow, MessageEncoder messageEncoder) {
     Objects.requireNonNull(transport);
     this.reactor = reactor;
     this.transport = transport;
     this.outboundFlow = outboundFlow;
     this.authenticationClient = new AuthenticationClient(reactor);
+    this.messageEncoder = messageEncoder;
   }
 
   @Override
   public void accept(ByteBuffer buffer) {
     try {
-      Optional<Decoder> optDecoder = messageDecoder.attachForDecode(buffer, buffer.position());
+      Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
       if (optDecoder.isPresent()) {
         final Decoder decoder = optDecoder.get();
         switch (decoder.getMessageType()) {
@@ -205,7 +206,7 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
 
     sessionMessageBuffer.clear();
     EstablishmentAckEncoder establishEncoder =
-        (EstablishmentAckEncoder) messageEncoder.attachForEncode(sessionMessageBuffer, 0,
+        (EstablishmentAckEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
             MessageType.ESTABLISHMENT_ACK);
     establishEncoder.setTimestamp(requestTimestamp);
     establishEncoder.setSessionId(uuidAsBytes);
@@ -219,7 +220,7 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
   void establishmentReject(long requestTimestamp, EstablishmentReject rejectCode)
       throws IOException {
     EstablishmentRejectEncoder establishEncoder =
-        (EstablishmentRejectEncoder) messageEncoder.attachForEncode(sessionMessageBuffer, 0,
+        (EstablishmentRejectEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
             MessageType.ESTABLISHMENT_REJECT);
     establishEncoder.setTimestamp(requestTimestamp);
     establishEncoder.setSessionId(uuidAsBytes);
@@ -233,7 +234,7 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
 
   void negotiationReject(long requestTimestamp, NegotiationReject rejectCode) throws IOException {
     NegotiationRejectEncoder negotiateEncoder =
-        (NegotiationRejectEncoder) messageEncoder.attachForEncode(sessionMessageBuffer, 0,
+        (NegotiationRejectEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
             MessageType.NEGOTIATION_REJECT);
     negotiateEncoder.setRequestTimestamp(requestTimestamp);
     negotiateEncoder.setSessionId(uuidAsBytes);
@@ -248,7 +249,7 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
 
   void negotiationResponse(long requestTimestamp, FlowType serverFlow) throws IOException {
     NegotiationResponseEncoder negotiateEncoder =
-        (NegotiationResponseEncoder) messageEncoder.attachForEncode(sessionMessageBuffer, 0,
+        (NegotiationResponseEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
             MessageType.NEGOTIATION_RESPONSE);
     negotiateEncoder.setRequestTimestamp(requestTimestamp);
     negotiateEncoder.setSessionId(uuidAsBytes);

@@ -90,6 +90,7 @@ public class MessageLengthFrameSpliterator implements FrameSpliterator {
     message.limit(messageLimit);
 
     action.accept(message);
+    offset = messageLimit; 
     buffer.position(messageLimit);
     return true;
   }

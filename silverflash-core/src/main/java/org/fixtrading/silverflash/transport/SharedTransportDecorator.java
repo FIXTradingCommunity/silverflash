@@ -32,7 +32,7 @@ import java.util.function.Supplier;
 
 import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.buffer.BufferSupplier;
-import org.fixtrading.silverflash.buffer.FrameSpliterator;
+import org.fixtrading.silverflash.frame.FrameSpliterator;
 
 /**
  * Allows multiple sessions to share a Transport.

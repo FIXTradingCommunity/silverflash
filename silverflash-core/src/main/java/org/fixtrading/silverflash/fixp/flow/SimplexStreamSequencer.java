@@ -40,19 +40,18 @@ public class SimplexStreamSequencer implements Sequencer, MutableSequence {
   private long nextSeqNo;
   private final ByteBuffer sequenceBuffer = ByteBuffer.allocateDirect(18).order(
       ByteOrder.nativeOrder());
-  private final MessageEncoder messageEncoder = new MessageEncoder();
   private final SequenceEncoder sequenceEncoder;
   private final BufferArrays arrays = new BufferArrays();
   private boolean firstTime = true;
 
-  public SimplexStreamSequencer() {
-    this(1);
+  public SimplexStreamSequencer(MessageEncoder messageEncoder) {
+    this(1, messageEncoder);
   }
 
-  public SimplexStreamSequencer(long nextSeqNo) {
+  public SimplexStreamSequencer(long nextSeqNo, MessageEncoder messageEncoder) {
     this.nextSeqNo = nextSeqNo;
     sequenceEncoder =
-        (SequenceEncoder) messageEncoder.attachForEncode(sequenceBuffer, 0, MessageType.SEQUENCE);
+        (SequenceEncoder) messageEncoder.wrap(sequenceBuffer, 0, MessageType.SEQUENCE);
   }
 
   /*

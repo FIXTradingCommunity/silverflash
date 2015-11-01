@@ -23,19 +23,14 @@ import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventTyp
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
 import org.fixtrading.silverflash.fixp.messages.MessageType;
-import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;
-import org.fixtrading.silverflash.transport.Transport;
 
 /**
  * A flow for a one-way session. No application messages are sent.
@@ -43,7 +38,21 @@ import org.fixtrading.silverflash.transport.Transport;
  * @author Don Mendelson
  *
  */
-public class NoneSender implements FlowSender {
+public class NoneFlowSender extends AbstractFlow implements FlowSender {
+  @SuppressWarnings("rawtypes")
+  public static class Builder<T extends NoneFlowSender, B extends FlowBuilder>
+      extends AbstractFlow.Builder {
+
+    @SuppressWarnings("unchecked")
+    public T build() {
+      return (T) new NoneFlowSender(this);
+    }
+  }
+
+  @SuppressWarnings("rawtypes")
+  public static Builder builder() {
+    return new Builder();
+  }
 
   private final ByteBuffer heartbeatBuffer = ByteBuffer.allocateDirect(10).order(
       ByteOrder.nativeOrder());
@@ -63,11 +72,6 @@ public class NoneSender implements FlowSender {
   private final TimerSchedule heartbeatSchedule;
   private final Subscription heartbeatSubscription;
   private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
-  private final MessageEncoder messageEncoder = new MessageEncoder();
-  private final EventReactor<ByteBuffer> reactor;
-  private final UUID sessionId;
-  private final Transport transport;
-
 
   /**
    * Constructor
@@ -75,28 +79,22 @@ public class NoneSender implements FlowSender {
    * @param reactor an EventReactor
    * @param sessionId unique session ID
    * @param transport conveys messages
-   * @param outboundKeepaliveInterval heartbeat interval
+   * @param keepaliveInterval heartbeat interval
    */
-  public NoneSender(EventReactor<ByteBuffer> reactor, final UUID sessionId,
-      final Transport transport, int outboundKeepaliveInterval) {
-    Objects.requireNonNull(sessionId);
-    Objects.requireNonNull(transport);
-    this.reactor = reactor;
-    this.sessionId = sessionId;
-    this.transport = transport;
+  protected NoneFlowSender(Builder builder) {
+    super(builder);
 
-    messageEncoder.attachForEncode(heartbeatBuffer, 0, MessageType.UNSEQUENCED_HEARTBEAT);
+    messageEncoder.wrap(heartbeatBuffer, 0, MessageType.UNSEQUENCED_HEARTBEAT);
 
-    if (outboundKeepaliveInterval != 0) {
+    if (keepaliveInterval != 0) {
       final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, HEARTBEAT);
       heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
       heartbeatSchedule =
-          reactor.postAtInterval(heartbeatTopic, heartbeatBuffer, outboundKeepaliveInterval);
+          reactor.postAtInterval(heartbeatTopic, heartbeatBuffer, keepaliveInterval);
     } else {
       // No outbound heartbeats if multicast
       heartbeatSubscription = null;
       heartbeatSchedule = null;
-
     }
   }
 
@@ -106,7 +104,6 @@ public class NoneSender implements FlowSender {
    * @see org.fixtrading.silverflash.Sender#send(java.nio.ByteBuffer)
    */
   public long send(ByteBuffer message) throws IOException {
-    // TODO Auto-generated method stub
     return 0;
   }
 
@@ -116,7 +113,6 @@ public class NoneSender implements FlowSender {
    * @see org.fixtrading.silverflash.fixp.flow.FlowSender#sendEndOfStream()
    */
   public void sendEndOfStream() throws IOException {
-    // TODO Auto-generated method stub
 
   }
 

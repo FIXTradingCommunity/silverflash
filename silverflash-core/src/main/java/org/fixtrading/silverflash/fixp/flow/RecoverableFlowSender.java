@@ -24,24 +24,19 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.RecoverableSender;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.SessionId;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder.FinishedSendingEncoder;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder.RetransmissionEncoder;
+import org.fixtrading.silverflash.fixp.messages.MessageType;
 import org.fixtrading.silverflash.fixp.store.MessageStore;
 import org.fixtrading.silverflash.fixp.store.StoreException;
-import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;
-import org.fixtrading.silverflash.transport.Transport;
 
 /**
  * Sends messages on an recoverable flow on a Transport that guarantees FIFO delivery. The
@@ -51,12 +46,34 @@ import org.fixtrading.silverflash.transport.Transport;
  * @author Don Mendelson
  *
  */
-public class RecoverableFlowSender implements FlowSender, RecoverableSender, MutableSequence {
+@SuppressWarnings("unchecked")
+public class RecoverableFlowSender extends AbstractFlow
+    implements RecoverableSender, MutableSequence {
+
+  @SuppressWarnings("rawtypes")
+  public static class Builder<T extends RecoverableFlowSender, B extends FlowBuilder>
+      extends AbstractFlow.Builder {
+
+    private MessageStore store;
+
+    public T build() {
+      return (T) new RecoverableFlowSender(this);
+    }
+
+    public B withMessageStore(MessageStore store) {
+      this.store = store;
+      return (B) this;
+    }
+  };
+
+  @SuppressWarnings("rawtypes")
+  public static Builder builder() {
+    return new Builder();
+  }
 
   private final AtomicBoolean criticalSection = new AtomicBoolean();
   private ByteBuffer finishedBuffer;
   private ByteBuffer heartbeatBuffer;
-  private final EventReactor<ByteBuffer> reactor;
   private final Receiver heartbeatEvent = new Receiver() {
 
     public void accept(ByteBuffer t) {
@@ -73,49 +90,32 @@ public class RecoverableFlowSender implements FlowSender, RecoverableSender, Mut
   private final Subscription heartbeatSubscription;
   private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
   private final AtomicBoolean isRetransmission = new AtomicBoolean();
-  private final MessageEncoder messageEncoder = new MessageEncoder();
-  private final ByteBuffer retransBuffer = ByteBuffer.allocateDirect(46).order(
-      ByteOrder.nativeOrder());
-  private final RetransmissionEncoder retransmissionEncoder;
-  private final Transport transport;
-  private final UUID sessionId;
-  private final byte[] uuidAsBytes;
-  private final MessageStore store;
   private final ByteBuffer[] one = new ByteBuffer[1];
-  private final Sequencer sequencer;
+  private final ByteBuffer retransBuffer = ByteBuffer.allocateDirect(46)
+      .order(ByteOrder.nativeOrder());
+  private final RetransmissionEncoder retransmissionEncoder;
   private final ByteBuffer[] srcs = new ByteBuffer[32];
 
-  /**
-   * Constructor
-   * 
-   * @param reactor event pub/sub
-   * @param store MessageStore for recovery
-   * @param sessionId ID of the session
-   * @param transport transport used to send messages
-   * @param outboundKeepaliveInterval heartbeat interval
-   */
-  public RecoverableFlowSender(EventReactor<ByteBuffer> reactor, MessageStore store,
-      final UUID sessionId, Transport transport, int outboundKeepaliveInterval, Sequencer sequencer) {
-    Objects.requireNonNull(sessionId);
-    Objects.requireNonNull(store);
-    Objects.requireNonNull(transport);
-    this.reactor = reactor;
-    this.store = store;
-    this.sessionId = sessionId;
-    this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
-    retransmissionEncoder =
-        (RetransmissionEncoder) messageEncoder.attachForEncode(retransBuffer, 0,
-            MessageType.RETRANSMISSION);
-    this.transport = transport;
+  private final MessageStore store;
+
+  protected RecoverableFlowSender(Builder builder) {
+    super(builder);
+    Objects.requireNonNull(builder.store);
+    this.store = builder.store;
+    retransmissionEncoder = (RetransmissionEncoder) messageEncoder.wrap(retransBuffer, 0,
+        MessageType.RETRANSMISSION);
     final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, HEARTBEAT);
     heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
-    heartbeatSchedule =
-        reactor.postAtInterval(heartbeatTopic, ByteBuffer.allocate(0), outboundKeepaliveInterval);
-    this.sequencer = sequencer;
+    heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, ByteBuffer.allocate(0),
+        keepaliveInterval);
   }
 
   public long getNextSeqNo() {
     return sequencer.getNextSeqNo();
+  }
+
+  private void persist(long seqNo, ByteBuffer message) throws StoreException {
+    store.insertMessage(sessionId, seqNo, message);
   }
 
   @Override
@@ -190,9 +190,8 @@ public class RecoverableFlowSender implements FlowSender, RecoverableSender, Mut
     }
     try {
       finishedBuffer = ByteBuffer.allocateDirect(34).order(ByteOrder.nativeOrder());
-      FinishedSendingEncoder terminateEncoder =
-          (FinishedSendingEncoder) messageEncoder.attachForEncode(finishedBuffer, 0,
-              MessageType.FINISHED_SENDING);
+      FinishedSendingEncoder terminateEncoder = (FinishedSendingEncoder) messageEncoder
+          .wrap(finishedBuffer, 0, MessageType.FINISHED_SENDING);
       terminateEncoder.setSessionId(uuidAsBytes);
       terminateEncoder.setLastSeqNo(sequencer.getNextSeqNo() - 1);
       transport.write(finishedBuffer);
@@ -217,9 +216,5 @@ public class RecoverableFlowSender implements FlowSender, RecoverableSender, Mut
    */
   public void setNextSeqNo(long nextSeqNo) {
     ((MutableSequence) (this.sequencer)).setNextSeqNo(nextSeqNo);
-  }
-
-  private void persist(long seqNo, ByteBuffer message) throws StoreException {
-    store.insertMessage(sessionId, seqNo, message);
   }
 }

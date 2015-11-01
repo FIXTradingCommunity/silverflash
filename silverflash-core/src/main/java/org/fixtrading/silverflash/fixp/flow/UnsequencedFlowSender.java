@@ -24,21 +24,16 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.SessionId;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
+import org.fixtrading.silverflash.fixp.messages.MessageEncoder.TerminateEncoder;
 import org.fixtrading.silverflash.fixp.messages.MessageType;
 import org.fixtrading.silverflash.fixp.messages.TerminationCode;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder.TerminateEncoder;
-import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;
-import org.fixtrading.silverflash.transport.Transport;
 
 /**
  * Sends messages on an unsequenced flow.
@@ -46,14 +41,25 @@ import org.fixtrading.silverflash.transport.Transport;
  * @author Don Mendelson
  *
  */
-public class UnsequencedFlowSender implements FlowSender {
-  private final ByteBuffer heartbeatBuffer = ByteBuffer.allocateDirect(10).order(
-      ByteOrder.nativeOrder());
-  private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
-  private final MessageEncoder messageEncoder = new MessageEncoder();
-  private final Transport transport;
-  private final byte[] uuidAsBytes;
+public class UnsequencedFlowSender extends AbstractFlow implements FlowSender {
 
+  @SuppressWarnings("rawtypes")
+  public static class Builder<T extends UnsequencedFlowSender, B extends FlowBuilder>
+      extends AbstractFlow.Builder {
+
+    @SuppressWarnings("unchecked")
+    public T build() {
+      return (T) new UnsequencedFlowSender(this);
+    }
+  }
+
+  @SuppressWarnings("rawtypes")
+  public static Builder builder() {
+    return new Builder();
+  }
+
+  private final ByteBuffer heartbeatBuffer = ByteBuffer.allocateDirect(10)
+      .order(ByteOrder.nativeOrder());
   private final Receiver heartbeatEvent = new Receiver() {
 
     public void accept(ByteBuffer t) {
@@ -67,25 +73,18 @@ public class UnsequencedFlowSender implements FlowSender {
 
   };
 
-  private final Subscription heartbeatSubscription;
   private final TimerSchedule heartbeatSchedule;
-  private final UUID sessionId;
-  private final EventReactor<ByteBuffer> reactor;
+  private final Subscription heartbeatSubscription;
+  private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
 
-  public UnsequencedFlowSender(EventReactor<ByteBuffer> reactor, UUID sessionId,
-      Transport transport, int outboundKeepaliveInterval) {
-    Objects.requireNonNull(sessionId);
-    Objects.requireNonNull(transport);
-    this.reactor = reactor;
-    this.sessionId = sessionId;
-    this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
-    this.transport = transport;
-    messageEncoder.attachForEncode(heartbeatBuffer, 0, MessageType.UNSEQUENCED_HEARTBEAT);
+  protected UnsequencedFlowSender(Builder builder) {
+    super(builder);
+    messageEncoder.wrap(heartbeatBuffer, 0, MessageType.UNSEQUENCED_HEARTBEAT);
 
     final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, HEARTBEAT);
     heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
-    heartbeatSchedule =
-        reactor.postAtInterval(heartbeatTopic, heartbeatBuffer, outboundKeepaliveInterval);
+    heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, heartbeatBuffer,
+        keepaliveInterval);
   }
 
   @Override
@@ -109,9 +108,8 @@ public class UnsequencedFlowSender implements FlowSender {
     heartbeatSubscription.unsubscribe();
 
     final ByteBuffer terminateBuffer = ByteBuffer.allocateDirect(29).order(ByteOrder.nativeOrder());
-    TerminateEncoder terminateEncoder =
-        (TerminateEncoder) messageEncoder
-            .attachForEncode(terminateBuffer, 0, MessageType.TERMINATE);
+    TerminateEncoder terminateEncoder = (TerminateEncoder) messageEncoder.wrap(terminateBuffer, 0,
+        MessageType.TERMINATE);
     terminateEncoder.setSessionId(uuidAsBytes);
     terminateEncoder.setCode(TerminationCode.FINISHED);
     terminateEncoder.setReasonNull();

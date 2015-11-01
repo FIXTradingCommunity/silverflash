@@ -63,7 +63,7 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
   private FlowType inboundFlow;
   private int inboundKeepaliveInterval;
   private final MessageDecoder messageDecoder = new MessageDecoder();
-  private final MessageEncoder messageEncoder = new MessageEncoder();
+  private final MessageEncoder messageEncoder;
   private final FlowType outboundFlow;
 
   private int outboundKeepaliveInterval = DEFAULT_OUTBOUND_KEEPALIVE_INTERVAL;
@@ -85,10 +85,11 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
    * @param transport used to exchange messages with the server
    */
   public ClientSessionEstablisher(EventReactor<ByteBuffer> reactor, FlowType outboundFlow,
-      Transport transport) {
+      Transport transport, MessageEncoder messageEncoder) {
     this.reactor = reactor;
     this.outboundFlow = outboundFlow;
     this.transport = transport;
+    this.messageEncoder = messageEncoder;
   }
 
   /**
@@ -120,7 +121,7 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
   @Override
   public void accept(ByteBuffer buffer) {
     try {
-      Optional<Decoder> optDecoder = messageDecoder.attachForDecode(buffer, buffer.position());
+      Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
       if (optDecoder.isPresent()) {
         final Decoder decoder = optDecoder.get();
         switch (decoder.getMessageType()) {
@@ -221,7 +222,7 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
   void establish(int keepaliveInterval) throws IOException {
     sessionMessageBuffer.clear();
     EstablishEncoder establishEncoder =
-        (EstablishEncoder) messageEncoder.attachForEncode(sessionMessageBuffer, 0,
+        (EstablishEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
             MessageType.ESTABLISH);
     requestTimestamp = System.nanoTime();
     establishEncoder.setTimestamp(requestTimestamp);
@@ -242,7 +243,7 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
    */
   void negotiate() throws IOException {
     NegotiateEncoder negotiateEncoder =
-        (NegotiateEncoder) messageEncoder.attachForEncode(sessionMessageBuffer, 0,
+        (NegotiateEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
             MessageType.NEGOTIATE);
     requestTimestamp = System.nanoTime();
     negotiateEncoder.setTimestamp(requestTimestamp);

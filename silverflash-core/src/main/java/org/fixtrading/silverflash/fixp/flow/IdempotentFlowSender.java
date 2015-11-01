@@ -24,21 +24,16 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.SessionId;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
+import org.fixtrading.silverflash.fixp.messages.MessageEncoder.TerminateEncoder;
 import org.fixtrading.silverflash.fixp.messages.MessageType;
 import org.fixtrading.silverflash.fixp.messages.TerminationCode;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder.TerminateEncoder;
-import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;
-import org.fixtrading.silverflash.transport.Transport;
 
 /**
  * Sends messages on an idempotent flow on a Transport that guarantees FIFO delivery. The
@@ -47,8 +42,21 @@ import org.fixtrading.silverflash.transport.Transport;
  * @author Don Mendelson
  *
  */
-public class IdempotentFlowSender implements FlowSender, MutableSequence {
+public class IdempotentFlowSender extends AbstractFlow implements FlowSender, MutableSequence {
 
+  @SuppressWarnings("rawtypes")
+  public static class Builder<T extends IdempotentFlowSender, B extends FlowBuilder>
+      extends AbstractFlow.Builder {
+
+    public IdempotentFlowSender build() {
+      return new IdempotentFlowSender(this);
+    }
+  }
+
+  @SuppressWarnings({ "rawtypes", "unchecked" })
+  public static  Builder<IdempotentFlowSender, FlowBuilder> builder() {
+    return new Builder();
+  }
 
   private final Receiver heartbeatEvent = new Receiver() {
 
@@ -71,30 +79,17 @@ public class IdempotentFlowSender implements FlowSender, MutableSequence {
   private final TimerSchedule heartbeatSchedule;
   private final Subscription heartbeatSubscription;
   private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
-  private final MessageEncoder messageEncoder = new MessageEncoder();
-  private final Transport transport;
-  private final byte[] uuidAsBytes;
-  private final UUID sessionId;
-  private final EventReactor<ByteBuffer> reactor;
-  private final Sequencer sequencer;
   private static final ByteBuffer[] EMPTY = new ByteBuffer[0];
   private final ByteBuffer[] one = new ByteBuffer[1];
   private final AtomicBoolean criticalSection = new AtomicBoolean();
 
-  public IdempotentFlowSender(EventReactor<ByteBuffer> reactor, final UUID sessionId,
-      Transport transport, int outboundKeepaliveInterval, Sequencer sequencer) {
-    Objects.requireNonNull(sessionId);
-    Objects.requireNonNull(transport);
-    this.reactor = reactor;
-    this.sessionId = sessionId;
-    this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
-    this.transport = transport;
+  protected IdempotentFlowSender(@SuppressWarnings("rawtypes") Builder builder) {
+    super(builder);
 
     final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, HEARTBEAT);
     heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
-    heartbeatSchedule =
-        reactor.postAtInterval(heartbeatTopic, ByteBuffer.allocate(0), outboundKeepaliveInterval);
-    this.sequencer = sequencer;
+    heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, ByteBuffer.allocate(0),
+        keepaliveInterval);
   }
 
   @Override
@@ -123,9 +118,8 @@ public class IdempotentFlowSender implements FlowSender, MutableSequence {
     heartbeatSubscription.unsubscribe();
 
     final ByteBuffer terminateBuffer = ByteBuffer.allocateDirect(29).order(ByteOrder.nativeOrder());
-    final TerminateEncoder terminateEncoder =
-        (TerminateEncoder) messageEncoder
-            .attachForEncode(terminateBuffer, 0, MessageType.TERMINATE);
+    final TerminateEncoder terminateEncoder = (TerminateEncoder) messageEncoder
+        .wrap(terminateBuffer, 0, MessageType.TERMINATE);
     terminateEncoder.setSessionId(uuidAsBytes);
     terminateEncoder.setCode(TerminationCode.FINISHED);
     terminateEncoder.setReasonNull();

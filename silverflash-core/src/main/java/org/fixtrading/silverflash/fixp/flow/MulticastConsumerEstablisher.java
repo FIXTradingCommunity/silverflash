@@ -71,7 +71,7 @@ public class MulticastConsumerEstablisher implements Establisher, FlowReceiver, 
 
   @Override
   public void accept(ByteBuffer buffer) {
-    Optional<Decoder> optDecoder = messageDecoder.attachForDecode(buffer, buffer.position());
+    Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
     if (optDecoder.isPresent()) {
       final Decoder decoder = optDecoder.get();
       if (MessageType.TOPIC == decoder.getMessageType()) {

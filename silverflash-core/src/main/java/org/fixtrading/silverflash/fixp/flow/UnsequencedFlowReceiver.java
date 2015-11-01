@@ -17,22 +17,17 @@
 
 package org.fixtrading.silverflash.fixp.flow;
 
-import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.*;
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.PEER_HEARTBEAT;
+import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.PEER_TERMINATED;
 
 import java.nio.ByteBuffer;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Receiver;
-import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.SessionId;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
-import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;
@@ -43,7 +38,20 @@ import org.fixtrading.silverflash.reactor.Topic;
  * @author Don Mendelson
  *
  */
-public class UnsequencedFlowReceiver implements FlowReceiver {
+public class UnsequencedFlowReceiver extends AbstractReceiverFlow implements FlowReceiver {
+
+  @SuppressWarnings("rawtypes")
+  public static class Builder<T extends UnsequencedFlowReceiver, B extends FlowReceiverBuilder<UnsequencedFlowReceiver, B>>
+      extends AbstractReceiverFlow.Builder implements FlowReceiverBuilder {
+
+    public UnsequencedFlowReceiver build() {
+      return new UnsequencedFlowReceiver(this);
+    }
+  }
+
+  public static Builder<UnsequencedFlowReceiver, ? extends FlowReceiverBuilder> builder() {
+    return new Builder();
+  }
 
   private final Receiver heartbeatEvent = t -> {
     if (isHeartbeatDue()) {
@@ -56,56 +64,36 @@ public class UnsequencedFlowReceiver implements FlowReceiver {
   private boolean isEndOfStream = false;
   private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
   private final MessageDecoder messageDecoder = new MessageDecoder();
-  private final EventReactor<ByteBuffer> reactor;
-  private final Session<UUID> session;
-  private final UUID sessionId;
-  private final MessageConsumer<UUID> streamReceiver;
   private final Topic terminatedTopic;
-  private final byte[] uuidAsBytes;
 
-  /**
-   * Constructor
-   * 
-   * @param reactor an EventReactor
-   * @param session a session using this flow
-   * @param streamReceiver a consumer of application messages
-   * @param inboundKeepaliveInterval expected heartbeat interval
-   */
-  public UnsequencedFlowReceiver(EventReactor<ByteBuffer> reactor, Session<UUID> session,
-      MessageConsumer<UUID> streamReceiver, int inboundKeepaliveInterval) {
-    Objects.requireNonNull(session);
-    Objects.requireNonNull(streamReceiver);
-    this.reactor = reactor;
-    this.session = session;
-    this.sessionId = session.getSessionId();
-    uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
-    this.streamReceiver = streamReceiver;
+  protected UnsequencedFlowReceiver(Builder builder) {
+    super(builder);
     terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
 
     final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, PEER_HEARTBEAT);
     heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
-    heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, inboundKeepaliveInterval);
+    heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, null, keepaliveInterval);
   }
 
   @Override
   public void accept(ByteBuffer buffer) {
-    Optional<Decoder> optDecoder = messageDecoder.attachForDecode(buffer, buffer.position());
+    Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
 
     boolean isApplicationMessage = true;
     if (optDecoder.isPresent()) {
       final Decoder decoder = optDecoder.get();
       switch (decoder.getMessageType()) {
-        case UNSEQUENCED_HEARTBEAT:
-          heartbeatReceived();
-          isApplicationMessage = false;
-          break;
-        case TERMINATE:
-          terminated(buffer);
-          isApplicationMessage = false;
-          break;
-        default:
-          // Todo: post to an async handler
-          System.err.println("Protocol violation");
+      case UNSEQUENCED_HEARTBEAT:
+        heartbeatReceived();
+        isApplicationMessage = false;
+        break;
+      case TERMINATE:
+        terminated(buffer);
+        isApplicationMessage = false;
+        break;
+      default:
+        // Todo: post to an async handler
+        System.err.println("Protocol violation");
       }
     }
     if (isApplicationMessage && !isEndOfStream) {
@@ -114,13 +102,13 @@ public class UnsequencedFlowReceiver implements FlowReceiver {
     }
   }
 
+  private void heartbeatReceived() {
+    isHeartbeatDue.set(false);
+  }
+
   @Override
   public boolean isHeartbeatDue() {
     return isHeartbeatDue.getAndSet(true);
-  }
-
-  private void heartbeatReceived() {
-    isHeartbeatDue.set(false);
   }
 
   private void terminated(ByteBuffer buffer) {

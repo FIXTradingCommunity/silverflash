@@ -31,9 +31,9 @@ import java.util.function.Supplier;
 import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
-import org.fixtrading.silverflash.fixp.frame.FixpWithMessageLengthFrameSpliterator;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
 import org.fixtrading.silverflash.fixp.messages.MessageSessionIdentifier;
+import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.transport.IdentifiableTransportConsumer;
 import org.fixtrading.silverflash.transport.SharedTransportDecorator;
@@ -65,7 +65,7 @@ public class FixpSharedTransportAdaptor extends SharedTransportDecorator<UUID> {
 
     protected Builder() {
       super();
-      this.withMessageFramer(new FixpWithMessageLengthFrameSpliterator());
+      this.withMessageFramer(new MessageLengthFrameSpliterator());
       this.withMessageIdentifer(new MessageSessionIdentifier());
     }
 
