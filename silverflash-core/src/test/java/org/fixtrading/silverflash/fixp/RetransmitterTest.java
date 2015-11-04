@@ -44,6 +44,7 @@ import org.fixtrading.silverflash.fixp.messages.MessageEncoder.RetransmissionReq
 import org.fixtrading.silverflash.fixp.store.InMemoryMessageStore;
 import org.fixtrading.silverflash.fixp.store.MessageStore;
 import org.fixtrading.silverflash.fixp.store.StoreException;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.reactor.ByteBufferDispatcher;
 import org.fixtrading.silverflash.reactor.ByteBufferPayload;
 import org.fixtrading.silverflash.reactor.EventReactor;
@@ -120,9 +121,9 @@ public class RetransmitterTest {
 
   private void notifyGap(long fromSeqNo, int count) {
     ByteBuffer retransmissionRequestBuffer = ByteBuffer.allocate(46).order(ByteOrder.nativeOrder());
-    MessageEncoder messageEncoder = new MessageEncoder();
+    MessageEncoder messageEncoder = new MessageEncoder(MessageLengthFrameEncoder.class);
     RetransmissionRequestEncoder retransmissionRequestEncoder =
-        (RetransmissionRequestEncoder) messageEncoder.attachForEncode(retransmissionRequestBuffer,
+        (RetransmissionRequestEncoder) messageEncoder.wrap(retransmissionRequestBuffer,
             0, MessageType.RETRANSMIT_REQUEST);
 
     retransmissionRequestEncoder.setSessionId(SessionId.UUIDAsBytes(uuid));

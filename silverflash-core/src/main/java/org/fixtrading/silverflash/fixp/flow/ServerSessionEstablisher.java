@@ -155,49 +155,11 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
     // just wait for client to negotiate
   }
 
-  public FlowType getInboundFlow() {
-    return inboundFlow;
-  }
-
-  public int getInboundKeepaliveInterval() {
-    return inboundKeepaliveInterval;
-  }
-
-  public FlowType getOutboundFlow() {
-    return outboundFlow;
-  }
-
-  /*
-   * (non-Javadoc)
-   * 
-   * @see org.fixtrading.silverflash.Establisher#getOutboundKeepaliveInterval()
-   */
-  public int getOutboundKeepaliveInterval() {
-    return outboundKeepaliveInterval;
-  }
-
-  @Override
-  public byte[] getSessionId() {
-    return uuidAsBytes;
-  }
-
-  public boolean isHeartbeatDue() {
-    return false;
-  }
-
-  @Override
-  public long send(ByteBuffer message) throws IOException {
-    Objects.requireNonNull(message);
-    transport.write(message);
-    return 0;
-  }
-
-  public void sendEndOfStream() throws IOException {
-
-  }
-
-  public void sendHeartbeat() throws IOException {
-
+  private ByteBuffer copyBuffer(final ByteBuffer src, int offset) {
+    ByteBuffer dest = ByteBuffer.allocate(src.limit()-offset);
+    src.position(offset);
+    dest.put(src);
+    return dest;
   }
 
   void establishmentAck(long requestTimestamp, int keepaliveInterval) throws IOException {
@@ -230,6 +192,36 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
 
     sessionMessageBuffer.rewind();
     reactor.post(terminatedTopic, sessionMessageBuffer);
+  }
+
+  public FlowType getInboundFlow() {
+    return inboundFlow;
+  }
+
+  public int getInboundKeepaliveInterval() {
+    return inboundKeepaliveInterval;
+  }
+
+  public FlowType getOutboundFlow() {
+    return outboundFlow;
+  }
+
+  /*
+   * (non-Javadoc)
+   * 
+   * @see org.fixtrading.silverflash.Establisher#getOutboundKeepaliveInterval()
+   */
+  public int getOutboundKeepaliveInterval() {
+    return outboundKeepaliveInterval;
+  }
+
+  @Override
+  public byte[] getSessionId() {
+    return uuidAsBytes;
+  }
+
+  public boolean isHeartbeatDue() {
+    return false;
   }
 
   void negotiationReject(long requestTimestamp, NegotiationReject rejectCode) throws IOException {
@@ -281,7 +273,8 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
 
   void onNegotiate(NegotiateDecoder negotiateDecoder) {
     final ByteBuffer buffer = negotiateDecoder.getBuffer();
-
+    int pos = buffer.position();
+    
     requestTimestamp = negotiateDecoder.getTimestamp();
     negotiateDecoder.getSessionId(this.uuidAsBytes, 0);
     this.sessionId = SessionId.UUIDFromBytes(uuidAsBytes);
@@ -293,8 +286,31 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
 
     terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
 
-    authenticationClient.requestAuthentication(sessionId, buffer, this);
+    // duplicate buffer for async behavior (deep copy)
+    final ByteBuffer toAuthenticator = copyBuffer(buffer, pos);
+    
+    authenticationClient.requestAuthentication(sessionId, toAuthenticator, this);
     // System.out.println("Negotiate received");
+  }
+
+  void publishNewSession(ByteBuffer negotiationResponse) {
+    Topic topic = SessionEventTopics.getTopic(NEW_SESSION_CREATED);
+    reactor.post(topic, negotiationResponse);
+  }
+
+  @Override
+  public long send(ByteBuffer message) throws IOException {
+    Objects.requireNonNull(message);
+    transport.write(message);
+    return 0;
+  }
+
+  public void sendEndOfStream() throws IOException {
+
+  }
+
+  public void sendHeartbeat() throws IOException {
+
   }
 
   /*
@@ -305,10 +321,5 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
   public ServerSessionEstablisher withOutboundKeepaliveInterval(int outboundKeepaliveInterval) {
     this.outboundKeepaliveInterval = outboundKeepaliveInterval;
     return this;
-  }
-
-  void publishNewSession(ByteBuffer negotiationResponse) {
-    Topic topic = SessionEventTopics.getTopic(NEW_SESSION_CREATED);
-    reactor.post(topic, negotiationResponse);
   }
 }

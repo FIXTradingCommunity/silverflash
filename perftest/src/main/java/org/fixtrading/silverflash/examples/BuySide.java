@@ -48,7 +48,10 @@ import org.fixtrading.silverflash.fixp.FixpSharedTransportAdaptor;
 import org.fixtrading.silverflash.fixp.SessionReadyFuture;
 import org.fixtrading.silverflash.fixp.SessionTerminatedFuture;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.transport.Dispatcher;
 import org.fixtrading.silverflash.transport.SharedMemoryTransport;
 import org.fixtrading.silverflash.transport.TcpConnectorTransport;
@@ -85,6 +88,8 @@ public class BuySide implements Runnable {
     private final int ordersPerPacket;
     private final Histogram rttHistogram;
     private SessionTerminatedFuture terminatedFuture;
+    private MessageFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
+    private SbeMessageHeaderEncoder sbeEncoder = new SbeMessageHeaderEncoder();
 
     public ClientRunner(Session<UUID> client, Histogram rttHistogram, int orders, int batchSize,
         int ordersPerPacket, long batchPauseMillis) {
@@ -234,11 +239,15 @@ public class BuySide implements Runnable {
     private void encodeOrder(MutableDirectBuffer directBuffer, ByteBuffer byteBuffer,
         boolean shouldTimestamp, int orderNumber) {
       int bufferOffset = byteBuffer.position();
-      MessageHeaderWithFrame.encode(byteBuffer, bufferOffset, order.sbeBlockLength(),
-          order.sbeTemplateId(), order.sbeSchemaVersion(), order.sbeSchemaVersion(),
-          MessageHeaderWithFrame.getLength() + order.sbeBlockLength());
 
-      bufferOffset += MessageHeaderWithFrame.getLength();
+      frameEncoder.wrap(byteBuffer);
+      frameEncoder.encodeFrameHeader();
+
+      sbeEncoder.wrap(byteBuffer, frameEncoder.getHeaderLength())
+          .setBlockLength(order.sbeBlockLength()).setTemplateId(order.sbeTemplateId())
+          .setSchemaId(order.sbeSchemaId()).getSchemaVersion(order.sbeSchemaVersion());
+
+      bufferOffset += SbeMessageHeaderDecoder.getLength();
 
       order.wrap(directBuffer, bufferOffset);
 
@@ -277,7 +286,7 @@ public class BuySide implements Runnable {
     private final AcceptedDecoder accept = new AcceptedDecoder();
     private final AcceptStruct acceptStruct = new AcceptStruct();
     private final DirectBuffer directBuffer = new UnsafeBuffer(ByteBuffer.allocate(0));
-    private final MessageHeaderWithFrame messageHeaderIn = new MessageHeaderWithFrame();
+    private final SbeMessageHeaderDecoder messageHeaderIn = new SbeMessageHeaderDecoder();
     private final Histogram rttHistogram;
 
     public ClientListener(Histogram rttHistogram) {
@@ -286,7 +295,7 @@ public class BuySide implements Runnable {
 
     public void accept(ByteBuffer buffer, Session<UUID> session, long seqNo) {
 
-      messageHeaderIn.attachForDecode(buffer, buffer.position());
+      messageHeaderIn.wrap(buffer, buffer.position());
 
       final int templateId = messageHeaderIn.getTemplateId();
       switch (templateId) {
@@ -301,7 +310,7 @@ public class BuySide implements Runnable {
     private void decodeAccepted(ByteBuffer buffer, AcceptStruct acceptStruct) {
       try {
         directBuffer.wrap(buffer);
-        accept.wrap(directBuffer, buffer.position() + MessageHeaderWithFrame.getLength(),
+        accept.wrap(directBuffer, buffer.position() + SbeMessageHeaderDecoder.getLength(),
             messageHeaderIn.getBlockLength(), messageHeaderIn.getSchemaVersion());
         // long transactTime = accept.transactTime();
         // accept.getClOrdId(acceptStruct.clOrdId, 0);

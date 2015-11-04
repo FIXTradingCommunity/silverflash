@@ -48,7 +48,10 @@ import org.fixtrading.silverflash.fixp.Engine;
 import org.fixtrading.silverflash.fixp.FixpSharedTransportAdaptor;
 import org.fixtrading.silverflash.fixp.auth.SimpleAuthenticator;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.transport.Dispatcher;
 import org.fixtrading.silverflash.transport.SharedMemoryTransport;
 import org.fixtrading.silverflash.transport.TcpAcceptor;
@@ -100,7 +103,7 @@ public class SellSide {
     private final ByteBuffer byteBuffer =
         ByteBuffer.allocateDirect(1420).order(ByteOrder.nativeOrder());
     private final MutableDirectBuffer directBuffer = new UnsafeBuffer(byteBuffer);
-    private final MessageHeaderWithFrame messageHeaderIn = new MessageHeaderWithFrame();
+    private final SbeMessageHeaderDecoder messageHeaderIn = new SbeMessageHeaderDecoder();
     private final EnterOrderDecoder order = new EnterOrderDecoder();
     private long orderId = 0;
     private OrderStruct orderStruct = new OrderStruct();
@@ -108,12 +111,15 @@ public class SellSide {
     private int serverDecodeErrors = 0;
     private int serverReceived = 0;
     private int serverUnknown = 0;
+    private MessageFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
+    private SbeMessageHeaderEncoder sbeEncoder = new SbeMessageHeaderEncoder();
+
 
     public void accept(ByteBuffer inboundBuffer, Session<UUID> session, long seqNo) {
 
       serverReceived++;
 
-      messageHeaderIn.attachForDecode(inboundBuffer, inboundBuffer.position());
+      messageHeaderIn.wrap(inboundBuffer, inboundBuffer.position());
 
       final int templateId = messageHeaderIn.getTemplateId();
       switch (templateId) {
@@ -161,7 +167,7 @@ public class SellSide {
 
     private boolean decodeOrder(ByteBuffer buffer, OrderStruct orderStruct) {
       directBuffer.wrap(buffer);
-      order.wrap(directBuffer, buffer.position() + MessageHeaderWithFrame.getLength(),
+      order.wrap(directBuffer, buffer.position() + SbeMessageHeaderDecoder.getLength(),
           messageHeaderIn.getBlockLength(), messageHeaderIn.getSchemaVersion());
 
       order.getClOrdId(orderStruct.clOrdId, 0);
@@ -184,11 +190,15 @@ public class SellSide {
     private void encodeAccept(OrderStruct orderStruct, MutableDirectBuffer directBuffer,
         ByteBuffer byteBuffer) {
       int bufferOffset = byteBuffer.position();
-      MessageHeaderWithFrame.encode(byteBuffer, bufferOffset, accept.sbeBlockLength(),
-          accept.sbeTemplateId(), accept.sbeSchemaVersion(), accept.sbeSchemaVersion(),
-          MessageHeaderWithFrame.getLength() + accept.sbeBlockLength());
+ 
+      frameEncoder.wrap(byteBuffer);
+      frameEncoder.encodeFrameHeader();
 
-      bufferOffset += MessageHeaderWithFrame.getLength();
+      sbeEncoder.wrap(byteBuffer, frameEncoder.getHeaderLength())
+          .setBlockLength(accept.sbeBlockLength()).setTemplateId(accept.sbeTemplateId())
+          .setSchemaId(accept.sbeSchemaId()).getSchemaVersion(accept.sbeSchemaVersion());
+
+      bufferOffset += SbeMessageHeaderDecoder.getLength();
 
       directBuffer.wrap(byteBuffer);
       accept.wrap(directBuffer, bufferOffset);

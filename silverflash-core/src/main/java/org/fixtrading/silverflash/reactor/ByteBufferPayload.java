@@ -49,7 +49,9 @@ public class ByteBufferPayload implements PayloadAllocator<ByteBuffer> {
   }
 
   /**
-   * Copies payload to a destination buffer
+   * Copies payload to a destination buffer. 
+   * @param src source buffer
+   * @param dest destination buffer
    */
   public void setPayload(ByteBuffer src, ByteBuffer dest) {
     dest.clear();

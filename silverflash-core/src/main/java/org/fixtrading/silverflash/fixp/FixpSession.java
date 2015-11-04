@@ -64,6 +64,7 @@ import org.fixtrading.silverflash.fixp.messages.FlowType;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
 import org.fixtrading.silverflash.fixp.store.MessageStore;
 import org.fixtrading.silverflash.frame.FrameSpliterator;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
@@ -98,6 +99,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     private FrameSpliterator frameSpliter = null;
     private boolean isMultiplexedTransport = false;
     private MessageConsumer<UUID> messageConsumer = null;
+    private MessageEncoder messageEncoder = null;
     private FlowType outboundFlow = FlowType.IDEMPOTENT;
     private int outboundKeepaliveInterval = 10000;
     private EventReactor<ByteBuffer> reactor = null;
@@ -204,10 +206,23 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     }
 
     /**
-     * Provide a message framer. If not provided, a default implementation is used.
+     * Provide a FIXP message encoder. If not provided, a default implementation is used.
+     * 
+     * @param messageEncoder
+     *          encodes and frames FIXP messages
+     * @return this Builder
+     */
+    public B withMessageEncoder(MessageEncoder messageEncoder) {
+      this.messageEncoder = messageEncoder;
+      return (B) this;
+    }
+
+    /**
+     * Provide a message framer for received messages. If not provided, a default implementation is
+     * used.
      * 
      * @param frameSpliter
-     *          the frameSpliter to set
+     *          the FrameSpliterator to use for received messages
      * @return this Builder
      */
     public B withMessageFramer(FrameSpliterator frameSpliter) {
@@ -355,9 +370,11 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
 
   private FlowReceiver flowReceiver;
   private FlowSender flowSender;
-  private FrameSpliterator frameSpliter = new MessageLengthFrameSpliterator();
+  private FrameSpliterator frameSpliter;
   private boolean isMultiplexedTransport;
   private final MessageConsumer<UUID> messageConsumer;
+
+  private MessageEncoder messageEncoder;
 
   private final Receiver negotiatedHandler = new Receiver() {
 
@@ -375,10 +392,9 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
       establishedSubscription = reactor.subscribe(establishedTopic, new EstablishedHandler());
     }
   };
-
   private Subscription negotiatedSubscription;
-  private final FlowType outboundFlow;
 
+  private final FlowType outboundFlow;
   // Supports asynchronous message send
   private final Receiver outboundMessageHandler = new Receiver() {
 
@@ -407,6 +423,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
   private final EventReactor<ByteBuffer> reactor;
   private UUID sessionId = SessionId.EMPTY;
   private Topic sessionSuspendedTopic;
+
   private MessageStore store;
 
   private Subscription terminatedSubscription;
@@ -443,9 +460,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     }
 
   };
-
   private byte[] uuidAsBytes;
-  private MessageEncoder messageEncoder;
 
   /**
    * Construct a session
@@ -455,19 +470,31 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
    */
   @SuppressWarnings({ "rawtypes", "unchecked" })
   protected FixpSession(Builder builder) {
+    Objects.requireNonNull(builder.reactor);
+    Objects.requireNonNull(builder.transport);
+
     this.reactor = builder.reactor;
     this.transport = builder.transport;
     this.buffers = builder.buffers;
     this.messageConsumer = builder.messageConsumer;
     this.outboundFlow = builder.outboundFlow;
 
-    Objects.requireNonNull(this.reactor);
-    Objects.requireNonNull(this.transport);
-
     this.store = builder.store;
     this.isMultiplexedTransport = builder.isMultiplexedTransport;
     this.sessionId = builder.sessionId;
     this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
+
+    if (builder.frameSpliter != null) {
+      this.frameSpliter = builder.frameSpliter;
+    } else {
+      this.frameSpliter = new MessageLengthFrameSpliterator();
+    }
+
+    if (builder.messageEncoder != null) {
+      messageEncoder = builder.messageEncoder;
+    } else if (builder.role != Role.MULTICAST_CONSUMER) {
+      messageEncoder = new MessageEncoder(MessageLengthFrameEncoder.class);
+    }
 
     switch (builder.role) {
     case SERVER:
@@ -500,9 +527,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
 
     this.establisher.withOutboundKeepaliveInterval(builder.outboundKeepaliveInterval);
 
-    if (builder.frameSpliter != null) {
-      this.frameSpliter = builder.frameSpliter;
-    }
+
     if (builder.exceptionHandler != null) {
       this.exceptionConsumer = builder.exceptionHandler;
     }
@@ -714,6 +739,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     }
     this.flowReceiver = (FlowReceiver) builder.withSession(this)
         .withMessageConsumer(messageConsumer).withReactor(reactor)
+        .withTransport(getTransport()).withMessageEncoder(messageEncoder)
         .withKeepaliveInterval(establisher.getInboundKeepaliveInterval()).build();
   }
 

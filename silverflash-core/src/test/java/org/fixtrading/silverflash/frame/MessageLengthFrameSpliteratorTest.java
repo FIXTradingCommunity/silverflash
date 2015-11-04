@@ -91,9 +91,10 @@ public class MessageLengthFrameSpliteratorTest {
   }
 
   public void encodeApplicationMessage(ByteBuffer buf, ByteBuffer message) {
-    message.rewind();
+    message.flip();
     int messageLength = message.remaining();
     encoder.wrap(buf).setMessageLength(messageLength).encodeFrameHeader();
     buf.put(message);
+    encoder.encodeFrameTrailer();
   }
 }

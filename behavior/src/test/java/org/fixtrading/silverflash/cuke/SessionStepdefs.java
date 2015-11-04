@@ -35,10 +35,13 @@ import org.fixtrading.silverflash.fixp.FixpSession;
 import org.fixtrading.silverflash.fixp.SessionReadyFuture;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
 import org.fixtrading.silverflash.fixp.messages.MessageType;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.NotAppliedDecoder;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.transport.PipeTransport;
 import org.fixtrading.silverflash.transport.Transport;
 import org.fixtrading.silverflash.transport.TransportConsumer;
@@ -134,13 +137,14 @@ public class SessionStepdefs {
   private final ByteBuffer applicationMessageBuffer;
   private TestReceiver clientReceiver;
   private int outboundKeepaliveInterval = 500;
+  private MessageFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
+  private SbeMessageHeaderEncoder sbeEncoder = new SbeMessageHeaderEncoder();
 
   public SessionStepdefs() throws Exception {
     byte[] message = "This an application message".getBytes();
     applicationMessageBuffer =
-        ByteBuffer.allocate(MessageHeaderWithFrame.getLength() + message.length).order(
-            ByteOrder.nativeOrder());
-    encodeApplicationMessage(applicationMessageBuffer, message);
+        ByteBuffer.allocate(128).order(ByteOrder.nativeOrder());
+    encodeApplicationMessageWithFrame(applicationMessageBuffer, message);
   }
 
   @Given("^client and server applications$")
@@ -248,13 +252,13 @@ public class SessionStepdefs {
     if (buffer == null) {
       fail("No response message received");
     }
-    final MessageHeaderWithFrame messageHeader = new MessageHeaderWithFrame();
-    messageHeader.attachForDecode(buffer, 0);
+    final SbeMessageHeaderDecoder messageHeader = new SbeMessageHeaderDecoder();
+    messageHeader.wrap(buffer, 0);
     assertEquals("NoApplied was not last message recieved", MessageType.NOT_APPLIED.getCode(),
         messageHeader.getTemplateId());
 
     final MessageDecoder messageDecoder = new MessageDecoder();
-    Optional<Decoder> optDecoder = messageDecoder.attachForDecode(buffer, buffer.position());
+    Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
 
     if (optDecoder.isPresent()) {
       final Decoder decoder = optDecoder.get();
@@ -279,10 +283,16 @@ public class SessionStepdefs {
     clientSession = null;
     serverSession = null;
   }
-
-  private void encodeApplicationMessage(ByteBuffer buf, byte[] message) {
-    MessageHeaderWithFrame.encode(buf, buf.position(), message.length, 2, 1, 0, message.length
-        + MessageHeaderWithFrame.getLength());
-    buf.put(message);
+  
+  private int encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
+    frameEncoder.wrap(buf);
+    frameEncoder.encodeFrameHeader();
+    sbeEncoder.wrap(buf, frameEncoder.getHeaderLength()).setBlockLength(message.length).setTemplateId(1)
+        .setTemplateId(2).getSchemaVersion(0);
+    buf.put(message, 0, message.length);
+    final int lengthwithHeader = message.length + SbeMessageHeaderDecoder.getLength();
+    frameEncoder.setMessageLength(lengthwithHeader);
+    frameEncoder.encodeFrameTrailer();
+    return lengthwithHeader;
   }
 }

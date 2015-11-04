@@ -39,7 +39,9 @@ import org.fixtrading.silverflash.fixp.SessionReadyFuture;
 import org.fixtrading.silverflash.fixp.SessionTerminatedFuture;
 import org.fixtrading.silverflash.fixp.auth.SimpleAuthenticator;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.reactor.ByteBufferDispatcher;
 import org.fixtrading.silverflash.reactor.ByteBufferPayload;
 import org.fixtrading.silverflash.reactor.EventReactor;
@@ -80,9 +82,14 @@ public class TcpSessionTest {
   private byte[][] messages;
   private int keepAliveInterval = 500;
   private String userCredentials = "User1";
+  private MessageLengthFrameEncoder frameEncoder;
+  private SbeMessageHeaderEncoder sbeEncoder;
 
   @Before
   public void setUp() throws Exception {
+    frameEncoder = new MessageLengthFrameEncoder();
+    sbeEncoder = new SbeMessageHeaderEncoder();
+
     SimpleDirectory directory = new SimpleDirectory();
     engine =
         Engine.builder().withAuthenticator(new SimpleAuthenticator().withDirectory(directory))
@@ -171,8 +178,7 @@ public class TcpSessionTest {
       int bytesSent = 0;
       for (int i = 0; i < messageCount; ++i) {
         buf.clear();
-        encodeApplicationMessageWithFrame(buf, messages[i]);
-        bytesSent += buf.position();
+        bytesSent += encodeApplicationMessageWithFrame(buf, messages[i]);
         clientSession.send(buf);
       }
 
@@ -189,10 +195,15 @@ public class TcpSessionTest {
     }
   }
 
-  private void encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
-    MessageHeaderWithFrame.encode(buf, buf.position(), message.length, templateId, schemaId,
-        schemaVersion, message.length + MessageHeaderWithFrame.getLength());
-    buf.put(message);
+  private int encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
+    frameEncoder.wrap(buf);
+    frameEncoder.encodeFrameHeader();
+    sbeEncoder.wrap(buf, frameEncoder.getHeaderLength()).setBlockLength(message.length).setTemplateId(templateId)
+        .setSchemaId(schemaId).getSchemaVersion(schemaVersion);
+    buf.put(message, 0, message.length);
+    final int lengthwithHeader = message.length + SbeMessageHeaderDecoder.getLength();
+    frameEncoder.setMessageLength(lengthwithHeader);
+    frameEncoder.encodeFrameTrailer();
+    return lengthwithHeader;
   }
-
 }

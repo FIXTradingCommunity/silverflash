@@ -269,8 +269,12 @@ public class EventReactor<T> implements Service {
   /**
    * Publish an event
    * 
-   * @param topic key to event
-   * @param src message to publish
+   * @param topic
+   *          key to event
+   * @param src
+   *          message to publish. The expectation for position is similar to
+   *          {@code WritableByteChannel.write()} in that the message is found from the start of
+   *          buffer to its limit.
    */
   public void post(Topic topic, T src) {
     long sequence = ringBuffer.next();

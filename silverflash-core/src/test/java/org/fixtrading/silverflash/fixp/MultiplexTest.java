@@ -43,7 +43,9 @@ import org.fixtrading.silverflash.fixp.SessionReadyFuture;
 import org.fixtrading.silverflash.fixp.SessionTerminatedFuture;
 import org.fixtrading.silverflash.fixp.auth.SimpleAuthenticator;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.transport.PipeTransport;
 import org.junit.After;
 import org.junit.Before;
@@ -84,6 +86,8 @@ public class MultiplexTest {
   private byte[][] messages;
   private FixpSharedTransportAdaptor serverTransport;
   private String userCredentials = "User1";
+  private MessageLengthFrameEncoder frameEncoder;
+  private SbeMessageHeaderEncoder sbeEncoder;
 
   private class ConsumerSupplier implements Supplier<MessageConsumer<UUID>> {
 
@@ -158,6 +162,9 @@ public class MultiplexTest {
   @SuppressWarnings("unchecked")
   @Before
   public void setUp() throws Exception {
+    frameEncoder = new MessageLengthFrameEncoder();
+    sbeEncoder = new SbeMessageHeaderEncoder();
+
     SimpleDirectory directory = new SimpleDirectory();
     serverEngine =
         Engine.builder().withAuthenticator(new SimpleAuthenticator().withDirectory(directory))
@@ -208,8 +215,12 @@ public class MultiplexTest {
   }
 
   private void encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
-    MessageHeaderWithFrame.encode(buf, buf.position(), message.length, templateId, schemaId,
-        schemaVersion, message.length + MessageHeaderWithFrame.getLength());
-    buf.put(message);
+    frameEncoder.wrap(buf);
+    frameEncoder.encodeFrameHeader();
+    sbeEncoder.wrap(buf, frameEncoder.getHeaderLength()).setBlockLength(message.length).setTemplateId(templateId)
+        .setSchemaId(schemaId).getSchemaVersion(schemaVersion);
+    buf.put(message, 0, message.length);
+    frameEncoder.setMessageLength(message.length + SbeMessageHeaderDecoder.getLength());
+    frameEncoder.encodeFrameTrailer();
   }
 }

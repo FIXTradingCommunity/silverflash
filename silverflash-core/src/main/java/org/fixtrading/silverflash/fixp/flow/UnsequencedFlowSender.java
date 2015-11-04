@@ -107,7 +107,7 @@ public class UnsequencedFlowSender extends AbstractFlow implements FlowSender {
     heartbeatSchedule.cancel();
     heartbeatSubscription.unsubscribe();
 
-    final ByteBuffer terminateBuffer = ByteBuffer.allocateDirect(29).order(ByteOrder.nativeOrder());
+    final ByteBuffer terminateBuffer = ByteBuffer.allocateDirect(48).order(ByteOrder.nativeOrder());
     TerminateEncoder terminateEncoder = (TerminateEncoder) messageEncoder.wrap(terminateBuffer, 0,
         MessageType.TERMINATE);
     terminateEncoder.setSessionId(uuidAsBytes);

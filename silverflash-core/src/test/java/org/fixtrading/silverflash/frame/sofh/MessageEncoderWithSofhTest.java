@@ -14,9 +14,11 @@
  * limitations under the License.
  *
  */
-package org.fixtrading.silverflash.fixp.messages;
+package org.fixtrading.silverflash.frame.sofh;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 import java.nio.ByteBuffer;
 import java.util.Optional;
@@ -24,34 +26,36 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 import org.fixtrading.silverflash.fixp.SessionId;
+import org.fixtrading.silverflash.fixp.messages.FlowType;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.EstablishDecoder;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.NegotiateDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder.EstablishEncoder;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder.NegotiateEncoder;
-import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
-import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
+import org.fixtrading.silverflash.fixp.messages.MessageType;
 import org.junit.Before;
 import org.junit.Test;
 
 /**
- * @author Donald
+ * @author Don Mendelson
  *
  */
-public class MessageEncoderTest {
+public class MessageEncoderWithSofhTest {
 
   private MessageEncoder encoder;
   private MessageDecoder decoder;
   private ByteBuffer buffer;
-  private MessageLengthFrameSpliterator framer;
+  private SofhFrameSpliterator framer;
 
   /**
    * @throws java.lang.Exception
    */
   @Before
   public void setUp() throws Exception {
-    encoder = new MessageEncoder(MessageLengthFrameEncoder.class);
-    framer = new MessageLengthFrameSpliterator();
+    encoder = new MessageEncoder(SofhFrameEncoder.class);
+    framer = new SofhFrameSpliterator();
     decoder = new MessageDecoder();
     buffer = ByteBuffer.allocate(2048);
   }

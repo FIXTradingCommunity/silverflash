@@ -36,7 +36,13 @@ import org.fixtrading.silverflash.fixp.SessionReadyFuture;
 import org.fixtrading.silverflash.fixp.SessionTerminatedFuture;
 import org.fixtrading.silverflash.fixp.auth.SimpleAuthenticator;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
+import org.fixtrading.silverflash.frame.sofh.SofhFrameEncoder;
+import org.fixtrading.silverflash.frame.sofh.SofhFrameSpliterator;
 import org.fixtrading.silverflash.reactor.ByteBufferDispatcher;
 import org.fixtrading.silverflash.reactor.ByteBufferPayload;
 import org.fixtrading.silverflash.reactor.EventReactor;
@@ -76,11 +82,14 @@ public class SessionTest {
   private PipeTransport memoryTransport;
   private int messageCount = Byte.MAX_VALUE;
   private byte[][] messages;
-  private int keepAliveInterval = 500;
   private String userCredentials = "User1";
+  private MessageFrameEncoder frameEncoder;
+  private SbeMessageHeaderEncoder sbeEncoder;
 
   @Before
   public void setUp() throws Exception {
+    sbeEncoder = new SbeMessageHeaderEncoder();
+
     SimpleDirectory directory = new SimpleDirectory();
     engine =
         Engine.builder().withAuthenticator(new SimpleAuthenticator().withDirectory(directory))
@@ -111,7 +120,9 @@ public class SessionTest {
   }
 
   @Test
-  public void sendSequencedWithFrame() throws Exception {
+  public void idempotent() throws Exception {
+    frameEncoder = new MessageLengthFrameEncoder();
+    
     Transport serverTransport = memoryTransport.getServerTransport();
     TransportDecorator nonFifoServerTransport = new TransportDecorator(serverTransport, false);
     TestReceiver serverReceiver = new TestReceiver();
@@ -154,8 +165,7 @@ public class SessionTest {
     int bytesSent = 0;
     for (int i = 0; i < messageCount; ++i) {
       buf.clear();
-      encodeApplicationMessageWithFrame(buf, messages[i]);
-      bytesSent += buf.position();
+      bytesSent += encodeApplicationMessageWithFrame(buf, messages[i]);
       clientSession.send(buf);
     }
 
@@ -172,66 +182,9 @@ public class SessionTest {
   }
 
   @Test
-  public void sendImplicitWithFrame() throws Exception {
-    Transport serverTransport = memoryTransport.getServerTransport();
-    TestReceiver serverReceiver = new TestReceiver();
-
-    FixpSession serverSession =
-        FixpSession
-            .builder()
-            .withReactor(engine.getReactor())
-            .withTransport(serverTransport)
-            .withBufferSupplier(
-                new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(
-                    ByteOrder.nativeOrder()))).withMessageConsumer(serverReceiver)
-            .withOutboundFlow(FlowType.IDEMPOTENT).withOutboundKeepaliveInterval(10000).asServer()
-            .build();
-
-    serverSession.open();
-
-    Transport clientTransport = memoryTransport.getClientTransport();
-    TestReceiver clientReceiver = new TestReceiver();
-    UUID sessionId = SessionId.generateUUID();
-
-    FixpSession clientSession =
-        FixpSession
-            .builder()
-            .withReactor(reactor2)
-            .withTransport(clientTransport)
-            .withBufferSupplier(
-                new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(
-                    ByteOrder.nativeOrder()))).withMessageConsumer(clientReceiver)
-            .withOutboundFlow(FlowType.IDEMPOTENT).withSessionId(sessionId)
-            .withClientCredentials(userCredentials.getBytes()).withOutboundKeepaliveInterval(10000)
-            .build();
-
-    SessionReadyFuture future = new SessionReadyFuture(sessionId, reactor2);
-    clientSession.open();
-    future.get(3000, TimeUnit.MILLISECONDS);
-
-    ByteBuffer buf = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
-    int bytesSent = 0;
-    for (int i = 0; i < messageCount; ++i) {
-      buf.clear();
-      encodeApplicationMessageWithFrame(buf, messages[i]);
-      bytesSent += buf.position();
-      clientSession.send(buf);
-    }
-
-    try {
-      Thread.sleep(1000);
-    } catch (InterruptedException e) {
-
-    }
-    assertEquals(bytesSent, serverReceiver.getBytesReceived());
-
-    SessionTerminatedFuture future2 = new SessionTerminatedFuture(sessionId, reactor2);
-    clientSession.close();
-    future.get(1000, TimeUnit.MILLISECONDS);
-  }
-
-  @Test
-  public void sendUnsequencedWithFrame() throws Exception {
+  public void unsequenced() throws Exception {
+    frameEncoder = new MessageLengthFrameEncoder();
+    
     Transport serverTransport = memoryTransport.getServerTransport();
     TestReceiver serverReceiver = new TestReceiver();
 
@@ -266,14 +219,13 @@ public class SessionTest {
 
     SessionReadyFuture future = new SessionReadyFuture(sessionId, reactor2);
     clientSession.open();
-    future.get(3000, TimeUnit.MILLISECONDS);
+    future.get(300000, TimeUnit.MILLISECONDS);
 
     ByteBuffer buf = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
     int bytesSent = 0;
     for (int i = 0; i < messageCount; ++i) {
       buf.clear();
-      encodeApplicationMessageWithFrame(buf, messages[i]);
-      bytesSent += buf.position();
+      bytesSent += encodeApplicationMessageWithFrame(buf, messages[i]);
       clientSession.send(buf);
     }
 
@@ -288,11 +240,82 @@ public class SessionTest {
     clientSession.close();
     future.get(1000, TimeUnit.MILLISECONDS);
   }
+  
+  @Test
+  public void withSofh() throws Exception {
+    frameEncoder = new SofhFrameEncoder();
+    
+    Transport serverTransport = memoryTransport.getServerTransport();
+    TransportDecorator nonFifoServerTransport = new TransportDecorator(serverTransport, false);
+    TestReceiver serverReceiver = new TestReceiver();
 
-  private void encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
-    MessageHeaderWithFrame.encode(buf, buf.position(), message.length, templateId, schemaId,
-        schemaVersion, message.length + MessageHeaderWithFrame.getLength());
-    buf.put(message);
+    FixpSession serverSession =
+        FixpSession
+            .builder()
+            .withReactor(engine.getReactor())
+            .withTransport(nonFifoServerTransport)
+            .withBufferSupplier(
+                new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(
+                    ByteOrder.nativeOrder()))).withMessageConsumer(serverReceiver)
+            .withMessageFramer(new SofhFrameSpliterator())
+            .withMessageEncoder(new MessageEncoder(SofhFrameEncoder.class))
+            .withOutboundFlow(FlowType.IDEMPOTENT).withOutboundKeepaliveInterval(10000).asServer()
+            .build();
+
+    serverSession.open();
+
+    Transport clientTransport = memoryTransport.getClientTransport();
+    TransportDecorator nonFifoClientTransport = new TransportDecorator(clientTransport, false);
+    TestReceiver clientReceiver = new TestReceiver();
+    UUID sessionId = SessionId.generateUUID();
+
+    FixpSession clientSession =
+        FixpSession
+            .builder()
+            .withReactor(reactor2)
+            .withTransport(nonFifoClientTransport)
+            .withBufferSupplier(
+                new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(
+                    ByteOrder.nativeOrder()))).withMessageConsumer(clientReceiver)
+            .withMessageFramer(new SofhFrameSpliterator())
+            .withMessageEncoder(new MessageEncoder(SofhFrameEncoder.class))
+            .withOutboundFlow(FlowType.IDEMPOTENT).withSessionId(sessionId)
+            .withClientCredentials(userCredentials.getBytes()).withOutboundKeepaliveInterval(10000)
+            .build();
+
+    SessionReadyFuture future = new SessionReadyFuture(sessionId, reactor2);
+    clientSession.open();
+    future.get(3000, TimeUnit.MILLISECONDS);
+
+    ByteBuffer buf = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
+    int bytesSent = 0;
+    for (int i = 0; i < messageCount; ++i) {
+      buf.clear();
+      bytesSent += encodeApplicationMessageWithFrame(buf, messages[i]);
+      clientSession.send(buf);
+    }
+
+    try {
+      Thread.sleep(1000);
+    } catch (InterruptedException e) {
+
+    }
+    assertEquals(bytesSent, serverReceiver.getBytesReceived());
+
+    SessionTerminatedFuture future2 = new SessionTerminatedFuture(sessionId, reactor2);
+    clientSession.close();
+    future.get(1000, TimeUnit.MILLISECONDS);
   }
-
+  
+  private int encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
+    frameEncoder.wrap(buf);
+    frameEncoder.encodeFrameHeader();
+    sbeEncoder.wrap(buf, frameEncoder.getHeaderLength()).setBlockLength(message.length).setTemplateId(templateId)
+        .setSchemaId(schemaId).getSchemaVersion(schemaVersion);
+    buf.put(message, 0, message.length);
+    final int lengthwithHeader = message.length + SbeMessageHeaderDecoder.getLength();
+    frameEncoder.setMessageLength(lengthwithHeader);
+    frameEncoder.encodeFrameTrailer();
+    return lengthwithHeader;
+  }
 }

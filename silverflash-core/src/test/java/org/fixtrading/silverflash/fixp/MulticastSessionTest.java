@@ -28,7 +28,9 @@ import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageHeaderWithFrame;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.reactor.ByteBufferDispatcher;
 import org.fixtrading.silverflash.reactor.ByteBufferPayload;
 import org.fixtrading.silverflash.reactor.EventReactor;
@@ -69,10 +71,16 @@ public class MulticastSessionTest {
   private PipeTransport memoryTransport;
   private int messageCount = Byte.MAX_VALUE;
   private byte[][] messages;
+  private MessageLengthFrameEncoder frameEncoder;
+  private SbeMessageHeaderEncoder sbeEncoder;
+
   private int keepAliveInterval = 500;
 
   @Before
   public void setUp() throws Exception {
+    frameEncoder = new MessageLengthFrameEncoder();
+    sbeEncoder = new SbeMessageHeaderEncoder();
+
     engine =
         Engine.builder().build();
     engine.open();
@@ -171,9 +179,13 @@ public class MulticastSessionTest {
    }
 
   private void encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
-    MessageHeaderWithFrame.encode(buf, buf.position(), message.length, templateId, schemaId,
-        schemaVersion, message.length + MessageHeaderWithFrame.getLength());
-    buf.put(message);
+    frameEncoder.wrap(buf);
+    frameEncoder.encodeFrameHeader();
+    sbeEncoder.wrap(buf, frameEncoder.getHeaderLength()).setBlockLength(message.length).setTemplateId(templateId)
+        .setSchemaId(schemaId).getSchemaVersion(schemaVersion);
+    buf.put(message, 0, message.length);
+    frameEncoder.setMessageLength(message.length + SbeMessageHeaderDecoder.getLength());
+    frameEncoder.encodeFrameTrailer();
   }
 
 }
