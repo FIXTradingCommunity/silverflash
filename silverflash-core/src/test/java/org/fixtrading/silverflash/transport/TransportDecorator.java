@@ -46,6 +46,10 @@ public class TransportDecorator implements Transport {
   public boolean isFifo() {
     return isFifo;
   }
+  
+  public boolean isMessageOriented() {
+    return false;
+  }
 
   public CompletableFuture<? extends Transport> open(BufferSupplier buffers,
       TransportConsumer consumer) {

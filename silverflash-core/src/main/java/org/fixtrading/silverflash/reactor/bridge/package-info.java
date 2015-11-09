@@ -14,4 +14,8 @@
  * limitations under the License.
  *
  */
+
+/**
+ * Extension of asynchronous even handling to remote hosts via a Transport
+ */
 package org.fixtrading.silverflash.reactor.bridge;

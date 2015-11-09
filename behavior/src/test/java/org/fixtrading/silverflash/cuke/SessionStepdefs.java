@@ -128,6 +128,14 @@ public class SessionStepdefs {
       return component.isReadyToRead();
     }
 
+    /* (non-Javadoc)
+     * @see org.fixtrading.silverflash.transport.Transport#isMessageOriented()
+     */
+    @Override
+    public boolean isMessageOriented() {
+      return false;
+    }
+
   }
 
 

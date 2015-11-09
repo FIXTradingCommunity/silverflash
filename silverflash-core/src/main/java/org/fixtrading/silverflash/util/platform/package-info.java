@@ -14,4 +14,8 @@
  * limitations under the License.
  *
  */
+
+/**
+ * Platform functions not abstracted by the JVM
+ */
 package org.fixtrading.silverflash.util.platform;

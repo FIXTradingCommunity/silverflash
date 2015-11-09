@@ -30,7 +30,7 @@ public interface Directory {
   /**
    * Property name for password
    */
-  static final String PW_DIRECTORY_ATTR = "PW_DIRECTORY_ATTR";
+  String PW_DIRECTORY_ATTR = "PW_DIRECTORY_ATTR";
 
   /**
    * Add a new entity

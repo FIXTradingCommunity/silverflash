@@ -35,7 +35,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 /**
- * @author Donald
+ * @author Don Mendelson
  *
  */
 public class MessageEncoderTest {

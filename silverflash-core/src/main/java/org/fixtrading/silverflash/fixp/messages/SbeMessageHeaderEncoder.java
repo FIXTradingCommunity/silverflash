@@ -82,7 +82,7 @@ public class SbeMessageHeaderEncoder {
    * 
    * @param templateId
    *          ID of an SBE message template
-   * @return
+   * @return this SbeMessageHeaderEncoder
    */
   public SbeMessageHeaderEncoder setTemplateId(int templateId) {
     buffer.putShort(offset + TEMPLATE_ID_OFFSET, (short) templateId);

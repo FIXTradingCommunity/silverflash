@@ -66,9 +66,7 @@ public class EventReactor<T> implements Service {
   public static class Builder<T, U extends EventReactor<T>, B extends Builder<T, U, B>> {
 
     private Dispatcher<T> dispatcher;
-    private ExceptionConsumer exceptionHandler = ex -> {
-      System.err.println(ex);
-    };
+    private ExceptionConsumer exceptionHandler = System.err::println;
     private Executor executor;
     private PayloadAllocator<T> payloadAllocator;
     private int ringSize = 128;

@@ -83,6 +83,7 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
    * @param reactor an EventReactor
    * @param outboundFlow client flow type
    * @param transport used to exchange messages with the server
+   * @param messageEncoder FIXP message encoder
    */
   public ClientSessionEstablisher(EventReactor<ByteBuffer> reactor, FlowType outboundFlow,
       Transport transport, MessageEncoder messageEncoder) {

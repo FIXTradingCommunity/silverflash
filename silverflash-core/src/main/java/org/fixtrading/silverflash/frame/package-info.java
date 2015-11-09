@@ -12,4 +12,8 @@
  * the License.
  *
  */
+
+/**
+ * Framing to delimit messages on a stream
+ */
 package org.fixtrading.silverflash.frame;

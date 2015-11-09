@@ -14,4 +14,8 @@
  * limitations under the License.
  *
  */
+
+/**
+ * Support methods
+ */
 package org.fixtrading.silverflash.util;

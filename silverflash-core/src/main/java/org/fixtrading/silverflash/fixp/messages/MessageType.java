@@ -96,7 +96,7 @@ public enum MessageType {
 
   private final int code;
 
-  private MessageType(int code) {
+  MessageType(int code) {
     this.code = code;
   }
 

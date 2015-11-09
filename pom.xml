@@ -8,10 +8,28 @@
 	<packaging>pom</packaging>
 	<name>silverflash-parent</name>
 	<description>Parent project for FIXP session protocol implementation</description>
+	<url>https://github.com/FIXTradingCommunity/silverflash/wiki</url>
 	<organization>
 		<name>FIX Trading Community</name>
 		<url>http://http://www.fixtradingcommunity.org/</url>
 	</organization>
+	<licenses>
+		<license>
+			<name>Apache License Version 2.0</name>
+			<url>http://www.apache.org/licenses/LICENSE-2.0</url>
+		</license>
+	</licenses>
+	<developers>
+		<developer>
+			<name>Don Mendelson</name>
+			<email>dmendelson@gmail.com</email>
+			<organization>FIX Trading Community</organization>
+		</developer>
+	</developers>
+	<scm>
+		<developerConnection>scm:git:ssh://git@github.com/FIXTradingCommunity/silverflash.git</developerConnection>
+		<url>https://github.com/FIXTradingCommunity/silverflash</url>
+	</scm>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<junit.version>4.11</junit.version>
@@ -37,7 +55,7 @@
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
-	
+
 	<build>
 		<pluginManagement>
 			<plugins>
@@ -56,13 +74,13 @@
 			</plugins>
 		</pluginManagement>
 	</build>
-	
+
 	<modules>
 		<module>silverflash-core</module>
 		<module>benchmark</module>
 		<module>behavior</module>
 		<module>perftest</module>
 		<module>cassandra-store</module>
-		
+
 	</modules>
 </project>

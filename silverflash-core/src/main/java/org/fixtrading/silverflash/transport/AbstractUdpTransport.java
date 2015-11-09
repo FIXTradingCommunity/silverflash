@@ -28,7 +28,7 @@ import org.fixtrading.silverflash.Service;
 import org.fixtrading.silverflash.buffer.BufferSupplier;
 
 /**
- * @author Donald
+ * @author Don Mendelson
  *
  */
 abstract class AbstractUdpTransport implements ReactiveTransport {
@@ -87,6 +87,10 @@ abstract class AbstractUdpTransport implements ReactiveTransport {
   }
 
   public boolean isFifo() {
+    return false;
+  }
+
+  public boolean isMessageOriented() {
     return false;
   }
 

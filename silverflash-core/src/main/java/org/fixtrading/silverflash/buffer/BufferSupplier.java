@@ -23,7 +23,7 @@ import java.util.function.Supplier;
  * A Supplier of buffers that requires populated buffers to be committed
  * 
  * Not guaranteed to support more than one uncommitted buffer.
- * @author Donald
+ * @author Don Mendelson
  *
  */
 public interface BufferSupplier extends Supplier<ByteBuffer> {

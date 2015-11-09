@@ -35,12 +35,16 @@ public class SofhFrameSpliterator implements FrameSpliterator {
   private int offset;
   private ByteOrder originalByteOrder;
 
+  /**
+   * Constructor
+   */
   public SofhFrameSpliterator() {
 
   }
 
   /**
-   * @param buffer2
+   * Construct an instance and wrap a buffer
+   * @param buffer buffer containing messages to delimit
    */
   public SofhFrameSpliterator(ByteBuffer buffer) {
     wrap(buffer);

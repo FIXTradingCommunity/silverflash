@@ -85,6 +85,10 @@ abstract class AbstractTcpChannel implements ReactiveTransport {
   public boolean isFifo() {
     return true;
   }
+  
+  public boolean isMessageOriented() {
+    return false;
+  }
 
   @Override
   public boolean isOpen() {

@@ -54,7 +54,7 @@ public enum EstablishmentReject {
 
   private final byte code;
 
-  private EstablishmentReject(byte code) {
+  EstablishmentReject(byte code) {
     this.code = code;
   }
 

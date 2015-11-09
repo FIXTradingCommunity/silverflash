@@ -45,7 +45,7 @@ public enum NegotiationReject {
 
   private final byte code;
 
-  private NegotiationReject(byte code) {
+  NegotiationReject(byte code) {
     this.code = code;
   }
 

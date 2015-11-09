@@ -58,22 +58,18 @@ public class IdempotentFlowSender extends AbstractFlow implements FlowSender, Mu
     return new Builder();
   }
 
-  private final Receiver heartbeatEvent = new Receiver() {
-
-    public void accept(ByteBuffer t) {
+  private final Receiver heartbeatEvent = t -> {
+    try {
+      sendHeartbeat();
+    } catch (IOException e) {
       try {
-        sendHeartbeat();
-      } catch (IOException e) {
-        try {
-          sendEndOfStream();
-        } catch (IOException e1) {
+        sendEndOfStream();
+      } catch (IOException e1) {
 
-        }
-        Topic terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
-        reactor.post(terminatedTopic, t);
       }
+      Topic terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
+      reactor.post(terminatedTopic, t);
     }
-
   };
 
   private final TimerSchedule heartbeatSchedule;

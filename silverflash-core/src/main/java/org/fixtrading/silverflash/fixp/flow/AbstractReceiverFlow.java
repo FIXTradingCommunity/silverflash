@@ -29,7 +29,7 @@ import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.transport.Transport;
 
 /**
- * @author Donald
+ * @author Don Mendelson
  *
  */
 class AbstractReceiverFlow {

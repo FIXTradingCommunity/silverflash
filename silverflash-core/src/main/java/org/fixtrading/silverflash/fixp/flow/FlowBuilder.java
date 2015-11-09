@@ -24,10 +24,11 @@ import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.transport.Transport;
 
 /**
- * @author Donald
+ * Builder for a FIXP message flow handler
+ * @author Don Mendelson
  *
- * @param <T>
- * @param <B>
+ * @param <T> flow type to build
+ * @param <B> builder type base class
  */
 public interface FlowBuilder<T, B extends FlowBuilder<T, B>> {
 

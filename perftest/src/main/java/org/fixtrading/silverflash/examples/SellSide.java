@@ -297,9 +297,7 @@ public class SellSide {
   private final ConsumerSupplier consumerSupplier = new ConsumerSupplier();
   private Engine engine;
 
-  private ExceptionConsumer exceptionConsumer = ex -> {
-    System.err.println(ex);
-  };
+  private ExceptionConsumer exceptionConsumer = ex -> System.err.println(ex);
 
   private final Properties props;
 

@@ -753,7 +753,9 @@ public class MessageEncoder {
   };
 
   /**
-   * @param messageFrameEncoderClass
+   * Constructor
+   * @param messageFrameEncoderClass class of MessageFrameEncoder to instantiate. The class
+   * must have a no-parameter constructor.
    */
   public MessageEncoder(Class<? extends MessageFrameEncoder> messageFrameEncoderClass) {
     this.messageFrameEncoderClass = messageFrameEncoderClass;

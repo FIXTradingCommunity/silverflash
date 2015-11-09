@@ -14,4 +14,8 @@
  * limitations under the License.
  *
  */
+
+/**
+ * FIXP session and engine implementation
+ */
 package org.fixtrading.silverflash.fixp;

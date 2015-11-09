@@ -410,6 +410,10 @@ public class SharedMemoryTransport implements Transport {
     return true;
   }
 
+  public boolean isMessageOriented() {
+    return true;
+  }
+
   /**
    * @return returns {@code true} if this Transport is open
    */

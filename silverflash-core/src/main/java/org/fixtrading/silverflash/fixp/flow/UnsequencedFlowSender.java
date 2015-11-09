@@ -58,19 +58,15 @@ public class UnsequencedFlowSender extends AbstractFlow implements FlowSender {
     return new Builder();
   }
 
-  private final ByteBuffer heartbeatBuffer = ByteBuffer.allocateDirect(10)
+  private final ByteBuffer heartbeatBuffer = ByteBuffer.allocateDirect(16)
       .order(ByteOrder.nativeOrder());
-  private final Receiver heartbeatEvent = new Receiver() {
-
-    public void accept(ByteBuffer t) {
-      try {
-        sendHeartbeat();
-      } catch (IOException e) {
-        Topic terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
-        reactor.post(terminatedTopic, t);
-      }
+  private final Receiver heartbeatEvent = t -> {
+    try {
+      sendHeartbeat();
+    } catch (IOException e) {
+      Topic terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
+      reactor.post(terminatedTopic, t);
     }
-
   };
 
   private final TimerSchedule heartbeatSchedule;

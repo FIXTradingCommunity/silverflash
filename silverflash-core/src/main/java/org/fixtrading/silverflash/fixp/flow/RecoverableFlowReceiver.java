@@ -83,7 +83,7 @@ public class RecoverableFlowReceiver extends AbstractReceiverFlow
   private final AtomicLong nextRetransSeqNoReceived = new AtomicLong(1);
   private final AtomicLong nextSeqNoAccepted = new AtomicLong(1);
   private final AtomicLong nextSeqNoReceived = new AtomicLong(1);
-  private final ByteBuffer retransmissionRequestBuffer = ByteBuffer.allocateDirect(46)
+  private final ByteBuffer retransmissionRequestBuffer = ByteBuffer.allocateDirect(64)
       .order(ByteOrder.nativeOrder());
   private final RetransmissionRequestEncoder retransmissionRequestEncoder;
   private final byte[] retransSessionId = new byte[16];

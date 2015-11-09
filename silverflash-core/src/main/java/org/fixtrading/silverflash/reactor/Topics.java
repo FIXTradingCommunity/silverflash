@@ -130,7 +130,7 @@ public final class Topics {
    * 
    * @param topic the base Topic
    * @param field an additional qualifier
-   * @return
+   * @return a new Topic
    */
   public static Topic getSubtopic(Topic topic, String field) {
     String[] baseFields = topic.getFields();

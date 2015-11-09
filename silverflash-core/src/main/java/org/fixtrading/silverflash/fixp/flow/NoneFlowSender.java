@@ -54,33 +54,21 @@ public class NoneFlowSender extends AbstractFlow implements FlowSender {
     return new Builder();
   }
 
-  private final ByteBuffer heartbeatBuffer = ByteBuffer.allocateDirect(10).order(
+  private final ByteBuffer heartbeatBuffer = ByteBuffer.allocateDirect(16).order(
       ByteOrder.nativeOrder());
-  private final Receiver heartbeatEvent = new Receiver() {
-
-    public void accept(ByteBuffer buffer) {
-      try {
-        sendHeartbeat();
-      } catch (IOException e) {
-        Topic terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
-        reactor.post(terminatedTopic, buffer);
-      }
+  private final Receiver heartbeatEvent = buffer -> {
+    try {
+      sendHeartbeat();
+    } catch (IOException e) {
+      Topic terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
+      reactor.post(terminatedTopic, buffer);
     }
-
   };
 
   private final TimerSchedule heartbeatSchedule;
   private final Subscription heartbeatSubscription;
   private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
 
-  /**
-   * Constructor
-   * 
-   * @param reactor an EventReactor
-   * @param sessionId unique session ID
-   * @param transport conveys messages
-   * @param keepaliveInterval heartbeat interval
-   */
   protected NoneFlowSender(Builder builder) {
     super(builder);
 

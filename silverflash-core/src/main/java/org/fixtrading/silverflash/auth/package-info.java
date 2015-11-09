@@ -14,4 +14,8 @@
  * limitations under the License.
  *
  */
+
+/**
+ * Counterparty authentication methods
+ */
 package org.fixtrading.silverflash.auth;

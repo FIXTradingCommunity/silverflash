@@ -89,6 +89,15 @@ public interface Transport {
   boolean isFifo();
 
   /**
+   * Does this Transport recognize message boundaries?
+   * 
+   * @return Returns {@code true} if each call to {@link #read} returns a single message
+   * or {@code false} if it returns a stream containing any number of messages or
+   * partial messages
+   */
+  boolean isMessageOriented();
+
+  /**
    * Tells whether this Transport is open
    * 
    * @return Returns {@code true} if this Transport is open

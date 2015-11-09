@@ -14,4 +14,8 @@
  * limitations under the License.
  *
  */
+
+/**
+ * Message store for recoverability
+ */
 package org.fixtrading.silverflash.fixp.store;

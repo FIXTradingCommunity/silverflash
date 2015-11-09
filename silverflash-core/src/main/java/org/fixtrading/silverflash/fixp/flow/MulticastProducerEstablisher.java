@@ -51,7 +51,6 @@ public class MulticastProducerEstablisher implements Sender, Establisher, FlowRe
   private final FlowType outboundFlow;
   private int outboundKeepaliveInterval = DEFAULT_OUTBOUND_KEEPALIVE_INTERVAL;
   private final EventReactor<ByteBuffer> reactor;
-  private UUID sessionId;
   private final ByteBuffer sessionMessageBuffer = ByteBuffer.allocateDirect(128).order(
       ByteOrder.nativeOrder());
   private Topic terminatedTopic;
@@ -65,7 +64,9 @@ public class MulticastProducerEstablisher implements Sender, Establisher, FlowRe
    * @param reactor an EventReactor
    * @param transport used to exchange messages with the client
    * @param outboundFlow client flow type
-   * @param topic 
+   * @param topic FIXP topic to publish
+   * @param sessionId session ID for the topic
+   * @param messageEncoder FIXP message encoder
    */
   public MulticastProducerEstablisher(EventReactor<ByteBuffer> reactor, Transport transport,
       FlowType outboundFlow, String topic, UUID sessionId, MessageEncoder messageEncoder) {
@@ -75,7 +76,6 @@ public class MulticastProducerEstablisher implements Sender, Establisher, FlowRe
     this.transport = transport;
     this.outboundFlow = outboundFlow;
     this.topic = topic;
-    this.sessionId = sessionId;
     this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
     terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
     this.messageEncoder = messageEncoder;
@@ -148,7 +148,7 @@ public class MulticastProducerEstablisher implements Sender, Establisher, FlowRe
      topicEncoder.setClassification(topic.getBytes());
     send(sessionMessageBuffer);
 
-    Topic initTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, new String(topic));
+    Topic initTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, topic);
     reactor.post(initTopic, sessionMessageBuffer);
   }
 

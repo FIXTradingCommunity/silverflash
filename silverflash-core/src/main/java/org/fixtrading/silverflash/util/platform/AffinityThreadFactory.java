@@ -28,13 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class AffinityThreadFactory implements ThreadFactory {
 
-  private final ThreadFactory nonAffinityThreadFactory = new ThreadFactory() {
-
-    public Thread newThread(Runnable runnable) {
-      return AffinityThreadFactory.this.newThread(runnable, false, true);
-    }
-
-  };
+  private final ThreadFactory nonAffinityThreadFactory = runnable -> AffinityThreadFactory.this.newThread(runnable, false, true);
 
   private final int[] cores;
   private int coreIndex = 0;

@@ -47,6 +47,7 @@ import org.fixtrading.silverflash.transport.TransportConsumer;
  * @author Don Mendelson
  *
  */
+@SuppressWarnings("Convert2MethodRef")
 public class EventReactorWithBridge extends EventReactor<ByteBuffer> {
 
   public static class Builder extends
@@ -110,21 +111,15 @@ public class EventReactorWithBridge extends EventReactor<ByteBuffer> {
 
   }
 
-  private static Receiver theForwarder = new Receiver() {
-
-    public void accept(ByteBuffer t) {
-      // TODO Auto-generated method stub
-
-    }
+  private static Receiver theForwarder = t -> {
+    // TODO Auto-generated method stub
 
   };
 
   private final BufferSupplier buffers = new SingleBufferSupplier(ByteBuffer.allocateDirect(
       16 * 1024).order(ByteOrder.nativeOrder()));
 
-  private ExceptionConsumer exceptionConsumer = ex -> {
-    System.err.println(ex);
-  };
+  private ExceptionConsumer exceptionConsumer = System.err::println;
   private final FrameSpliterator frameSpliter = new MessageLengthFrameSpliterator();
 
   private final Consumer<? super ByteBuffer> inboundReceiver = new Consumer<ByteBuffer>() {

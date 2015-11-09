@@ -14,4 +14,8 @@
  * limitations under the License.
  *
  */
+
+/**
+ * Authentication methods for entities identified in FIXP messages
+ */
 package org.fixtrading.silverflash.fixp.auth;

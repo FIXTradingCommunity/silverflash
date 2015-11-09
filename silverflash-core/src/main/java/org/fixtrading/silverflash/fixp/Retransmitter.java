@@ -40,6 +40,7 @@ import org.fixtrading.silverflash.fixp.messages.MessageDecoder.RetransmissionReq
 import org.fixtrading.silverflash.fixp.store.MessageStore;
 import org.fixtrading.silverflash.fixp.store.MessageStoreResult;
 import org.fixtrading.silverflash.fixp.store.StoreException;
+import org.fixtrading.silverflash.frame.MessageLengthFrameDecoder;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.Topic;
@@ -48,7 +49,7 @@ import org.fixtrading.silverflash.reactor.Topic;
  * Retrieves requested messages from a MessageStore and retransmits them on recoverable flows
  * 
  * @author Don Mendelson
- *
+ * TODO: make frame decoder configurable
  */
 public class Retransmitter implements Service {
 
@@ -80,12 +81,15 @@ public class Retransmitter implements Service {
   };
 
   private final MessageDecoder messageDecoder = new MessageDecoder();
+  private final MessageLengthFrameDecoder frameDecoder = new MessageLengthFrameDecoder();
   private final EventReactor<ByteBuffer> reactor;
   // todo: a vulture to remove entries for dead sessions, may consider LRU,
   // evict dead sessions
   private final Map<UUID, SessionValue> resultMap = new ConcurrentHashMap<>();
 
   private final Receiver retrieveHandler = buffer -> {
+    frameDecoder.wrap(buffer);
+    frameDecoder.decodeFrameHeader();
     Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
     if (optDecoder.isPresent()) {
       final Decoder decoder = optDecoder.get();

@@ -467,9 +467,7 @@ public class BuySide implements Runnable {
   private final byte[] clientId = "0999".getBytes();
   private Engine engine;
 
-  private ExceptionConsumer exceptionConsumer = ex -> {
-    System.err.println(ex);
-  };
+  private ExceptionConsumer exceptionConsumer = ex -> System.err.println(ex);
 
   private ExecutorService executor;
   private int numberOfClients;

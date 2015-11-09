@@ -144,6 +144,10 @@ public class PipeTransport {
       return true;
     }
 
+    public boolean isMessageOriented() {
+       return false;
+    }
+
   }
 
   private final Transport clientTransport = new HalfPipeTransport() {

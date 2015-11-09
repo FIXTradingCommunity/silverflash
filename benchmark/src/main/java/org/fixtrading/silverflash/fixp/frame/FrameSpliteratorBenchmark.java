@@ -88,18 +88,15 @@ public class FrameSpliteratorBenchmark {
     buffer.rewind();
     spliterator.wrap(buffer);
 
-    while (spliterator.tryAdvance(new Consumer<ByteBuffer>() {
+    while (spliterator.tryAdvance((Consumer<ByteBuffer>) message -> {
+      sbeHeaderEncoder.wrap(buffer, message.position());
 
-      public void accept(ByteBuffer message) {
-        sbeHeaderEncoder.wrap(buffer, message.position());
-
-        if (templateId == sbeHeaderEncoder.getTemplateId()) {
-          counters.succeeded++;
-        } else {
-          counters.failed++;
-        }
-
+      if (templateId == sbeHeaderEncoder.getTemplateId()) {
+        counters.succeeded++;
+      } else {
+        counters.failed++;
       }
+
     }));
   }
 

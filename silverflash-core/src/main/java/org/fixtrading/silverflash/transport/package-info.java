@@ -14,4 +14,8 @@
  * limitations under the License.
  *
  */
+
+/**
+ * Wrapper for transport layer protocols (OSI layer 4 and below)
+ */
 package org.fixtrading.silverflash.transport;

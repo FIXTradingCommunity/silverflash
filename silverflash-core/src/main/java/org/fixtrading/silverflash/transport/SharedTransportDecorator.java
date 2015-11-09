@@ -40,7 +40,7 @@ import org.fixtrading.silverflash.frame.FrameSpliterator;
  * Received messages are routed to sessions by session ID.
  * <p>
  * The Transport is not closed until all users close their reference to the Transport. Users of the
- * Transport are required to call {@link #open(Supplier, TransportConsumer)} and {@link #close()}
+ * Transport are required to call {@link Transport#open(Supplier, TransportConsumer)} and {@link Transport#close()}
  * exactly one time each, as they would for a non-shared Transport, and they must not attempt to
  * send on the transport after closing.
  * 
@@ -139,10 +139,6 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
     private final Supplier<ByteBuffer> buffers;
     private final TransportConsumer consumer;
 
-    /**
-     * @param buffers
-     * @param consumer
-     */
     public ConsumerWrapper(Supplier<ByteBuffer> buffers, TransportConsumer consumer) {
       this.buffers = buffers;
       this.consumer = consumer;
@@ -203,9 +199,7 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
 
   private final Transport transport;
 
-  protected ExceptionConsumer exceptionConsumer = ex -> {
-    System.err.println(ex);
-  };
+  protected ExceptionConsumer exceptionConsumer = System.err::println;
 
   protected Consumer<T> newSessionConsumer;
 
@@ -282,6 +276,10 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
     return transport.isFifo();
   }
 
+  public boolean isMessageOriented() {
+    return true;
+ }
+
   @Override
   public boolean isOpen() {
     return transport.isOpen();
@@ -310,9 +308,9 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
   }
 
   /**
-   * @throws IOException if an error occurs opening the underlying transport
-   * @throws ExecutionException 
-   * @throws InterruptedException 
+   * Open the Transport that this decorator wraps
+   * @throws ExecutionException if the asynchronous operation fails. Cause may be IOException.
+   * @throws InterruptedException if the asynchronous operation is interrupted
    */
   public CompletableFuture<? extends Transport> openUnderlyingTransport() {
     if (openCount.getAndIncrement() == 0) {

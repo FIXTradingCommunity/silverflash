@@ -44,7 +44,7 @@ public enum TerminationCode {
 
   private final byte code;
 
-  private TerminationCode(byte code) {
+  TerminationCode(byte code) {
     this.code = code;
   }
 

@@ -74,24 +74,20 @@ public class RecoverableFlowSender extends AbstractFlow
   private final AtomicBoolean criticalSection = new AtomicBoolean();
   private ByteBuffer finishedBuffer;
   private ByteBuffer heartbeatBuffer;
-  private final Receiver heartbeatEvent = new Receiver() {
-
-    public void accept(ByteBuffer t) {
-      try {
-        sendHeartbeat();
-      } catch (IOException e) {
-        Topic terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
-        reactor.post(terminatedTopic, t);
-      }
+  private final Receiver heartbeatEvent = t -> {
+    try {
+      sendHeartbeat();
+    } catch (IOException e) {
+      Topic terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
+      reactor.post(terminatedTopic, t);
     }
-
   };
   private final TimerSchedule heartbeatSchedule;
   private final Subscription heartbeatSubscription;
   private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
   private final AtomicBoolean isRetransmission = new AtomicBoolean();
   private final ByteBuffer[] one = new ByteBuffer[1];
-  private final ByteBuffer retransBuffer = ByteBuffer.allocateDirect(46)
+  private final ByteBuffer retransBuffer = ByteBuffer.allocateDirect(64)
       .order(ByteOrder.nativeOrder());
   private final RetransmissionEncoder retransmissionEncoder;
   private final ByteBuffer[] srcs = new ByteBuffer[32];
@@ -189,7 +185,7 @@ public class RecoverableFlowSender extends AbstractFlow
       Thread.yield();
     }
     try {
-      finishedBuffer = ByteBuffer.allocateDirect(34).order(ByteOrder.nativeOrder());
+      finishedBuffer = ByteBuffer.allocateDirect(48).order(ByteOrder.nativeOrder());
       FinishedSendingEncoder terminateEncoder = (FinishedSendingEncoder) messageEncoder
           .wrap(finishedBuffer, 0, MessageType.FINISHED_SENDING);
       terminateEncoder.setSessionId(uuidAsBytes);
@@ -204,6 +200,7 @@ public class RecoverableFlowSender extends AbstractFlow
   /**
    * Heartbeats with Sequence message until finished sending, then uses FinishedSending message
    * until session is terminated.
+   * @throws IOException if a message cannot be sent
    */
   public void sendHeartbeat() throws IOException {
     if (isHeartbeatDue.getAndSet(true)) {

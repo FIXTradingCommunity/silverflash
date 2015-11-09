@@ -36,7 +36,7 @@ import org.fixtrading.silverflash.fixp.messages.MessageEncoder.ContextEncoder;
 public class MultiplexSequencer implements Sequencer, MutableSequence {
 
   private long nextSeqNo;
-  private final ByteBuffer contextBuffer = ByteBuffer.allocateDirect(34).order(
+  private final ByteBuffer contextBuffer = ByteBuffer.allocateDirect(48).order(
       ByteOrder.nativeOrder());
   private final ContextEncoder contextEncoder;
   private final BufferArrays arrays = new BufferArrays();

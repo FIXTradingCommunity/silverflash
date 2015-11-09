@@ -14,4 +14,8 @@
  * limitations under the License.
  *
  */
+
+/**
+ * Buffer management
+ */
 package org.fixtrading.silverflash.buffer;

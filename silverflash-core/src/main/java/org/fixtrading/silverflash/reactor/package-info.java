@@ -14,4 +14,8 @@
  * limitations under the License.
  *
  */
+
+/**
+ * Publish and subscribe facility to handle events asynchronously
+ */
 package org.fixtrading.silverflash.reactor;

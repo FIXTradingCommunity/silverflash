@@ -32,7 +32,7 @@ import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 
 /**
- * @author Donald
+ * @author Don Mendelson
  *
  */
 public class BufferedTransportConsumer implements BufferSupplier, Service, TransportConsumer {
@@ -97,7 +97,9 @@ public class BufferedTransportConsumer implements BufferSupplier, Service, Trans
   };
 
   /**
-   * @param executor
+   * Constructor
+   * @param executor supplies threads to consume the buffer
+   * @param consumer a consumer of messages
    */
   public BufferedTransportConsumer(Executor executor, TransportConsumer consumer) {
     this.executor = executor;

@@ -47,11 +47,15 @@ public class UdpMulticastTransport extends AbstractUdpTransport {
   private final NetworkInterface networkInterface;
   private final int port;
   private MembershipKey key;
+  
   /**
    * Constructor
    * 
    * @param dispatcher
    *          an existing thread for dispatching
+   * @param multicastGroup multicast address
+   * @param port multicast port
+   * @param networkInterface network interface
    */
   public UdpMulticastTransport(Dispatcher dispatcher, InetAddress multicastGroup, int port,
       NetworkInterface networkInterface) {
@@ -68,6 +72,9 @@ public class UdpMulticastTransport extends AbstractUdpTransport {
    * 
    * @param selector
    *          event demultiplexor
+   * @param multicastGroup multicast address
+   * @param port multicast port
+   * @param networkInterface network interface
    */
   public UdpMulticastTransport(Selector selector, InetAddress multicastGroup, int port,
       NetworkInterface networkInterface) {

@@ -54,7 +54,7 @@ public class TcpConnectorTransport extends AbstractTcpChannel implements Connect
   /**
    * Constructs a TCP client Transport
    * 
-   * @param threadFactory supplies a thread for a dedicated dispatcher
+   * @param dispatcher a dedicated dispatcher thread
    * @param remoteAddress address to connect to
    */
   public TcpConnectorTransport(Dispatcher dispatcher, SocketAddress remoteAddress) {

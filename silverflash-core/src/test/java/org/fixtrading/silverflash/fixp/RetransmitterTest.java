@@ -120,7 +120,7 @@ public class RetransmitterTest {
   }
 
   private void notifyGap(long fromSeqNo, int count) {
-    ByteBuffer retransmissionRequestBuffer = ByteBuffer.allocate(46).order(ByteOrder.nativeOrder());
+    ByteBuffer retransmissionRequestBuffer = ByteBuffer.allocate(128).order(ByteOrder.nativeOrder());
     MessageEncoder messageEncoder = new MessageEncoder(MessageLengthFrameEncoder.class);
     RetransmissionRequestEncoder retransmissionRequestEncoder =
         (RetransmissionRequestEncoder) messageEncoder.wrap(retransmissionRequestBuffer,

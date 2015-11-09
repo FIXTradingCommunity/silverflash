@@ -14,4 +14,8 @@
  * limitations under the License.
  *
  */
+
+/**
+ * FIXP message encoding and decoding
+ */
 package org.fixtrading.silverflash.fixp.messages;

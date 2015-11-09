@@ -124,9 +124,7 @@ public class Engine implements AutoCloseable {
 
   private ReactiveAuthenticator<UUID, ByteBuffer> authenticator;
   private final EventReactor<ByteBuffer> eventReactor;
-  private ExceptionConsumer exceptionConsumer = ex -> {
-    System.err.println(ex);
-  };
+  private ExceptionConsumer exceptionConsumer = System.err::println;
   private final ExecutorService executor;
   private final IOReactor iOReactor;
   private final AtomicBoolean isOpen = new AtomicBoolean();

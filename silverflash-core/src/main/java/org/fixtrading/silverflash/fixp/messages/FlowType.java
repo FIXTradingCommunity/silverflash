@@ -44,7 +44,7 @@ public enum FlowType {
 
   private final byte code;
 
-  private FlowType(byte code) {
+  FlowType(byte code) {
     this.code = code;
   }
 

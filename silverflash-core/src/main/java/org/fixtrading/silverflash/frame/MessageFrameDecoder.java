@@ -19,7 +19,7 @@ package org.fixtrading.silverflash.frame;
 import java.nio.ByteBuffer;
 
 /**
- * @author Donald
+ * @author Don Mendelson
  *
  */
 public interface MessageFrameDecoder {

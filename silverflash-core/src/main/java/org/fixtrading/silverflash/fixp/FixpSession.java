@@ -364,9 +364,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
   private Subscription establishedSubscription;
   private final Establisher establisher;
 
-  private ExceptionConsumer exceptionConsumer = ex -> {
-    System.err.println(ex);
-  };
+  private ExceptionConsumer exceptionConsumer = System.err::println;
 
   private FlowReceiver flowReceiver;
   private FlowSender flowSender;
@@ -434,8 +432,12 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
 
     @Override
     public void accept(ByteBuffer buffer) {
-      frameSpliter.wrap(buffer);
-      frameSpliter.forEachRemaining(flowReceiver);
+      if (getTransport().isMessageOriented()) {
+        flowReceiver.accept(buffer);
+      } else {
+        frameSpliter.wrap(buffer);
+        frameSpliter.forEachRemaining(flowReceiver);
+      }
     }
 
     @Override
@@ -559,7 +561,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     final MulticastConsumerEstablisher clientSessionEstablisher = new MulticastConsumerEstablisher(
         reactor, getTransport()).withTopic(topic);
 
-    Topic initTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, new String(topic));
+    Topic initTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, topic);
     establishedSubscription = reactor.subscribe(initTopic, new EstablishedHandler());
 
     return clientSessionEstablisher;
@@ -573,7 +575,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     final MulticastProducerEstablisher serverSessionEstablisher = new MulticastProducerEstablisher(
         reactor, getTransport(), outboundFlow, topic, sessionId, messageEncoder);
 
-    Topic initTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, new String(topic));
+    Topic initTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, topic);
     establishedSubscription = reactor.subscribe(initTopic, new EstablishedHandler());
 
     return serverSessionEstablisher;

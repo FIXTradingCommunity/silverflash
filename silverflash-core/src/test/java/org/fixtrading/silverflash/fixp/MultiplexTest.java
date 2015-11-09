@@ -133,10 +133,8 @@ public class MultiplexTest {
     int totalBytesSent = 0;
     for (int i = 0; i < messageCount; ++i) {
       buf.clear();
-      encodeApplicationMessageWithFrame(buf, messages[i]);
-      final int bytesSent = buf.position();
-      long seqNo = clientSession.send(buf);
-      totalBytesSent += bytesSent;
+      totalBytesSent += encodeApplicationMessageWithFrame(buf, messages[i]);
+      clientSession.send(buf);
     }
 
     try {
@@ -144,11 +142,11 @@ public class MultiplexTest {
     } catch (InterruptedException e) {
 
     }
-    int bytesSent = 0;
+    int totalBytesReceived = 0;
     for (TestReceiver t : serverSupplier.getReceivers()) {
-      bytesSent += t.getBytesReceived();
+      totalBytesReceived += t.getBytesReceived();
     }
-    assertEquals(totalBytesSent, bytesSent);
+    assertEquals(totalBytesSent, totalBytesReceived);
 
     SessionTerminatedFuture future2 =
         new SessionTerminatedFuture(sessionId, clientEngine.getReactor());
@@ -214,13 +212,15 @@ public class MultiplexTest {
     clientEngine.close();
   }
 
-  private void encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
+  private int encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
     frameEncoder.wrap(buf);
     frameEncoder.encodeFrameHeader();
     sbeEncoder.wrap(buf, frameEncoder.getHeaderLength()).setBlockLength(message.length).setTemplateId(templateId)
         .setSchemaId(schemaId).getSchemaVersion(schemaVersion);
     buf.put(message, 0, message.length);
-    frameEncoder.setMessageLength(message.length + SbeMessageHeaderDecoder.getLength());
+    final int lengthwithHeader = message.length + SbeMessageHeaderDecoder.getLength();
+    frameEncoder.setMessageLength(lengthwithHeader);
     frameEncoder.encodeFrameTrailer();
+    return lengthwithHeader;
   }
 }

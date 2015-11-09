@@ -32,7 +32,7 @@ import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 
 /**
- * @author Donald
+ * @author Don Mendelson
  *
  */
 public class RingBufferSupplier implements BufferSupplier, Service {
