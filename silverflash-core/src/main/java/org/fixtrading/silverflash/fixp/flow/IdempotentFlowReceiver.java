@@ -77,7 +77,7 @@ public class IdempotentFlowReceiver extends AbstractReceiverFlow implements Flow
   private final MessageDecoder messageDecoder = new MessageDecoder();
   private final AtomicLong nextSeqNoAccepted = new AtomicLong(1);
   private final AtomicLong nextSeqNoReceived = new AtomicLong(1);
-  private final ByteBuffer notAppliedBuffer = ByteBuffer.allocateDirect(46)
+  private final ByteBuffer notAppliedBuffer = ByteBuffer.allocateDirect(32)
       .order(ByteOrder.nativeOrder());
   private final NotAppliedEncoder notAppliedEncoder;
   private final Topic terminatedTopic;

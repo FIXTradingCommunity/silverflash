@@ -39,7 +39,7 @@ import org.fixtrading.silverflash.fixp.messages.MessageEncoder.SequenceEncoder;
 public class SimplexSequencer implements Sequencer, MutableSequence {
 
   private long nextSeqNo;
-  private final ByteBuffer sequenceBuffer = ByteBuffer.allocateDirect(24).order(
+  private final ByteBuffer sequenceBuffer = ByteBuffer.allocateDirect(32).order(
       ByteOrder.nativeOrder());
   private final SequenceEncoder sequenceEncoder;
   private final BufferArrays arrays = new BufferArrays();
