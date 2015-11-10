@@ -18,6 +18,7 @@
 package org.fixtrading.silverflash.fixp.auth;
 
 import java.io.IOException;
+import java.net.URL;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -77,7 +78,8 @@ public class SimpleAuthenticator extends AbstractAuthenticator {
     Subject subject = new Subject();
 
     try {
-      System.setProperty("java.security.auth.login.config", "jaas-directory.config");
+      URL url = getClass().getClassLoader().getResource("jaas-directory.config");
+      System.setProperty("java.security.auth.login.config", url.toString());
       LoginContext context = new LoginContext(CONFIG_NAME, subject, this.callbackHandler);
       context.login();
       System.out.format("Authenticated session ID=%s credentials=%s\n", sessionId.toString(),
