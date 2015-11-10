@@ -249,7 +249,7 @@ public class IdempotentStreamTest {
     }
 
     try {
-      Thread.sleep(500000);
+      Thread.sleep(500);
     } catch (InterruptedException e) {
 
     }
