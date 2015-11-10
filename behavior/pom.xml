@@ -7,7 +7,7 @@
 		<version>0.0.1-SNAPSHOT</version>
 	</parent>
 	<artifactId>behavior</artifactId>
-	<name>silverflash-behavior</name>
+	<name>${project.groupId}:${project.artifactId}</name>
 	<description>FIXP Protocol behavior specifications</description>
 	<dependencies>
 		<dependency>

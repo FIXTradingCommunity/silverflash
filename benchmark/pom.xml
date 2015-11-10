@@ -9,7 +9,7 @@
 		<version>0.0.1-SNAPSHOT</version>
 	</parent>
 	<artifactId>benchmark</artifactId>
-	<name>silverflash-benchmark</name>
+	<name>${project.groupId}:${project.artifactId}</name>
 	<dependencies>
 		<dependency>
 			<groupId>org.fixtrading.silverflash</groupId>

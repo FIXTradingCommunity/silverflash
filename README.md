@@ -1,4 +1,7 @@
 # silverflash
+
+[![Build Status](https://travis-ci.org/FIXTradingCommunity/silverflash.svg?branch=master)](https://travis-ci.org/FIXTradingCommunity/silverflash)
+
 This project is a reference implementation of FIXP Performance Session Layer. It is intended to 
 aid developers of financial and other critical applications. Since the protocol stack is 
 standardized, it serves to exchange messages between organizations while keeping low latency

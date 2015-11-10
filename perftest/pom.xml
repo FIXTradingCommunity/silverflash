@@ -27,59 +27,57 @@
 	</dependencies>
 
 	<build>
-		<pluginManagement>
-			<plugins>
-				<plugin>
-					<groupId>org.codehaus.mojo</groupId>
-					<artifactId>exec-maven-plugin</artifactId>
-					<version>1.4.0</version>
-					<executions>
-						<execution>
-							<id>generate</id>
-							<phase>generate-sources</phase>
-							<goals>
-								<goal>java</goal>
-							</goals>
-						</execution>
-					</executions>
-					<configuration>
-						<mainClass>uk.co.real_logic.sbe.SbeTool</mainClass>
-						<classpathScope>compile</classpathScope>
-						<commandlineArgs>${project.build.resources[0].directory}/templates/application-schema.xml</commandlineArgs>
-						<!-- Maven doc says systemPropertyVariables, but that doesn't work -->
-						<systemProperties>
-							<property>
-								<key>sbe.output.dir</key>
-								<value>${project.build.sourceDirectory}</value>
-							</property>
-							<property>
-								<key>sbe.target.namespace</key>
-								<value>org.fixtrading.silverflash.examples.messages</value>
-							</property>
-						</systemProperties>
-					</configuration>
-				</plugin>
-				<plugin>
-					<artifactId>maven-assembly-plugin</artifactId>
-					<version>2.5.3</version>
-					<configuration>
-						<descriptorRefs>
-							<descriptorRef>jar-with-dependencies</descriptorRef>
-						</descriptorRefs>
-					</configuration>
-					<executions>
-						<execution>
-							<id>make-assembly</id> <!-- this is used for inheritance merges -->
-							<phase>package</phase> <!-- bind to the packaging phase -->
-							<goals>
-								<goal>single</goal>
-							</goals>
-						</execution>
-					</executions>
-				</plugin>
-			</plugins>
-		</pluginManagement>
+		<plugins>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>1.4.0</version>
+				<executions>
+					<execution>
+						<id>generate</id>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>java</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<mainClass>uk.co.real_logic.sbe.SbeTool</mainClass>
+					<classpathScope>compile</classpathScope>
+					<commandlineArgs>${project.build.resources[0].directory}/templates/application-schema.xml</commandlineArgs>
+					<!-- Maven doc says systemPropertyVariables, but that doesn't work -->
+					<systemProperties>
+						<property>
+							<key>sbe.output.dir</key>
+							<value>${project.build.sourceDirectory}</value>
+						</property>
+						<property>
+							<key>sbe.target.namespace</key>
+							<value>org.fixtrading.silverflash.examples.messages</value>
+						</property>
+					</systemProperties>
+				</configuration>
+			</plugin>
+			<plugin>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<version>2.5.3</version>
+				<configuration>
+					<descriptorRefs>
+						<descriptorRef>jar-with-dependencies</descriptorRef>
+					</descriptorRefs>
+				</configuration>
+				<executions>
+					<execution>
+						<id>make-assembly</id> <!-- this is used for inheritance merges -->
+						<phase>package</phase> <!-- bind to the packaging phase -->
+						<goals>
+							<goal>single</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
 	</build>
-	<name>silverflash-perftest</name>
+	<name>${project.groupId}:${project.artifactId}</name>
 	<description>Performance tests for engine implementation using FIXP session protocol </description>
 </project>
