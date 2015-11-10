@@ -6,7 +6,7 @@
 	<artifactId>silverflash-parent</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<packaging>pom</packaging>
-	<name>silverflash-parent</name>
+	<name>${project.groupId}:${project.artifactId}</name>
 	<description>Parent project for FIXP session protocol implementation</description>
 	<url>https://github.com/FIXTradingCommunity/silverflash/wiki</url>
 	<organization>
@@ -15,8 +15,8 @@
 	</organization>
 	<licenses>
 		<license>
-			<name>Apache License Version 2.0</name>
-			<url>http://www.apache.org/licenses/LICENSE-2.0</url>
+			<name>The Apache License, Version 2.0</name>
+			<url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
 		</license>
 	</licenses>
 	<developers>
@@ -24,6 +24,7 @@
 			<name>Don Mendelson</name>
 			<email>dmendelson@gmail.com</email>
 			<organization>FIX Trading Community</organization>
+			<organizationUrl>http://http://www.fixtradingcommunity.org/</organizationUrl>
 		</developer>
 	</developers>
 	<scm>

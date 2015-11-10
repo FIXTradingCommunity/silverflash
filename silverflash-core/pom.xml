@@ -7,7 +7,7 @@
 		<version>0.0.1-SNAPSHOT</version>
 	</parent>
 	<artifactId>silverflash-core</artifactId>
-	<name>silverflash-core</name>
+	<name>${project.groupId}:${project.artifactId}</name>
 
 	<dependencies>
 		<dependency>

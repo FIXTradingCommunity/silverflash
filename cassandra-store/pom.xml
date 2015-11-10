@@ -7,7 +7,7 @@
 		<version>0.0.1-SNAPSHOT</version>
 	</parent>
 	<artifactId>cassandra-store</artifactId>
-	<name>silverflash-cassandra-store</name>
+	<name>${project.groupId}:${project.artifactId}</name>
 	<description>Cassandra implementation of message store of FIXP engine</description>
 	
 	<dependencies>
