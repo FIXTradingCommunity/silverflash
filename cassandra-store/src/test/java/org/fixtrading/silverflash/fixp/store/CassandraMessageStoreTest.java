@@ -32,8 +32,10 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 
+@Ignore
 public class CassandraMessageStoreTest {
 
   private static String contactPoints = "localhost";
@@ -76,7 +78,7 @@ public class CassandraMessageStoreTest {
   @Before
   public void setUp() throws Exception {
     store = new CassandraMessageStore(contactPoints);
-    store.open().get();
+    store.open().get(10, TimeUnit.SECONDS);
   }
 
   @After
