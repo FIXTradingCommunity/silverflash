@@ -130,7 +130,8 @@ public class RecoverableFlowReceiver extends AbstractReceiverFlow
         isApplicationMessage = false;
         break;
       default:
-        System.err.println("Protocol violation");
+        System.out.println("RecoverableFlowReceiver: Protocol violation; unexpected session message "
+            + decoder.getMessageType());
       }
     }
     if (isApplicationMessage && !isEndOfStream) {

@@ -104,20 +104,21 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
       if (optDecoder.isPresent()) {
         final Decoder decoder = optDecoder.get();
         switch (decoder.getMessageType()) {
-          case NEGOTIATE:
-            onNegotiate((NegotiateDecoder) decoder);
-            break;
-          case ESTABLISH:
-            onEstablish((EstablishDecoder) decoder);
-            break;
-          default:
-            System.out
-                .println("ServerSessionEstablisher: Protocol violation; unexpected session message");
+        case NEGOTIATE:
+          onNegotiate((NegotiateDecoder) decoder);
+          break;
+        case ESTABLISH:
+          onEstablish((EstablishDecoder) decoder);
+          break;
+        default:
+          System.out
+              .println("ServerSessionEstablisher: Protocol violation; unexpected session message "
+                  + decoder.getMessageType());
         }
       } else {
         // Shouldn't get application message before handshake is done
-        System.out
-            .println("ServerSessionEstablisher: Protocol violation; unexpected application message");
+        System.out.println(
+            "ServerSessionEstablisher: Protocol violation; unexpected application message");
       }
     } catch (IOException ex) {
 

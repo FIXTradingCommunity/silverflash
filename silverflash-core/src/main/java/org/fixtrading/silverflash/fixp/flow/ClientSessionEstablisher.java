@@ -126,20 +126,22 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
       if (optDecoder.isPresent()) {
         final Decoder decoder = optDecoder.get();
         switch (decoder.getMessageType()) {
-          case NEGOTIATION_RESPONSE:
-            onNegotiationResponse((NegotiationResponseDecoder) decoder);
-            break;
-          case NEGOTIATION_REJECT:
-            onNegotiationReject((NegotiationRejectDecoder) decoder);
-            break;
-          case ESTABLISHMENT_ACK:
-            onEstablishmentAck((EstablishmentAckDecoder) decoder);
-            break;
-          case ESTABLISHMENT_REJECT:
-            onEstablishmentReject((EstablishmentRejectDecoder) decoder);
-            break;
-          default:
-            System.out.println("Protocol violation");
+        case NEGOTIATION_RESPONSE:
+          onNegotiationResponse((NegotiationResponseDecoder) decoder);
+          break;
+        case NEGOTIATION_REJECT:
+          onNegotiationReject((NegotiationRejectDecoder) decoder);
+          break;
+        case ESTABLISHMENT_ACK:
+          onEstablishmentAck((EstablishmentAckDecoder) decoder);
+          break;
+        case ESTABLISHMENT_REJECT:
+          onEstablishmentReject((EstablishmentRejectDecoder) decoder);
+          break;
+        default:
+          System.out
+              .println("ClientSessionEstablisher: Protocol violation; unexpected session message "
+                  + decoder.getMessageType());
         }
       } else {
         // Shouldn't get application message before handshake is done

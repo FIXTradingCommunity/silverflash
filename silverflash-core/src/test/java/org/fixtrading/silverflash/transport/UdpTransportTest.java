@@ -28,7 +28,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Enumeration;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -165,6 +164,7 @@ public class UdpTransportTest {
     assertEquals(totalBytesSent, serverReceiver.getBytesReceived());
   }
  
+  @Ignore
   @Test
   public void multicast() throws IOException, InterruptedException, ExecutionException, TimeoutException {
     NetworkInterface networkInterface = getMulticastInterface();

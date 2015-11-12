@@ -27,10 +27,8 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.Sequenced;
-import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.ContextDecoder;
@@ -125,7 +123,8 @@ public class IdempotentFlowReceiver extends AbstractReceiverFlow implements Flow
         isApplicationMessage = false;
         break;
       default:
-        System.err.println("Protocol violation");
+        System.out.println("IdempotentFlowReceiver: Protocol violation; unexpected session message "
+            + decoder.getMessageType());
       }
     }
     if (isApplicationMessage && !isEndOfStream) {

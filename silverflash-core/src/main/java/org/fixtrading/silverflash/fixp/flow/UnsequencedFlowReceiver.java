@@ -93,7 +93,8 @@ public class UnsequencedFlowReceiver extends AbstractReceiverFlow implements Flo
         break;
       default:
         // Todo: post to an async handler
-        System.err.println("Protocol violation");
+        System.out.println("UnsequencedFlowReceiver: Protocol violation; unexpected session message "
+            + decoder.getMessageType());
       }
     }
     if (isApplicationMessage && !isEndOfStream) {
