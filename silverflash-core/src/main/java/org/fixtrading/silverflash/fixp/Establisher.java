@@ -28,6 +28,11 @@ import org.fixtrading.silverflash.fixp.messages.FlowType;
 public interface Establisher {
 
   /**
+   * A signal to this Establisher to complete its work
+   */
+  void complete();
+  
+  /**
    * Transport layer established a connection
    */
   void connected();

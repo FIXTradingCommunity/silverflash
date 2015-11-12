@@ -343,10 +343,12 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
 
       sessionSuspendedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
 
+      establisher.complete();
+
       // Notify application that session is ready to go
       Topic readyTopic = SessionEventTopics.getTopic(sessionId, SESSION_READY);
       reactor.post(readyTopic, buffer);
-      // System.out.println("FixpSession established");
+      // System.out.println("FixpSession established"); 
     }
   }
 

@@ -165,9 +165,6 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
   }
 
   void establishmentAck(long requestTimestamp, int keepaliveInterval) throws IOException {
-    Topic readyTopic = SessionEventTopics.getTopic(sessionId, SERVER_ESTABLISHED);
-    reactor.post(readyTopic, sessionMessageBuffer);
-
     sessionMessageBuffer.clear();
     EstablishmentAckEncoder establishEncoder =
         (EstablishmentAckEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
@@ -265,9 +262,12 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
     establishDecoder.getSessionId(id, 0);
     // Assuming that authentication is only done in Negotiate; may change
     if (Arrays.equals(uuidAsBytes, id)) {
+      this.requestTimestamp = establishDecoder.getRequestTimestamp();
       inboundKeepaliveInterval = establishDecoder.getKeepaliveInterval();
-      establishDecoder.getNextSeqNo();
-      establishmentAck(requestTimestamp, outboundKeepaliveInterval);
+      long inboundNextSeqNo = establishDecoder.getNextSeqNo();
+
+      Topic readyTopic = SessionEventTopics.getTopic(sessionId, SERVER_ESTABLISHED);
+      reactor.post(readyTopic, sessionMessageBuffer);
     } else {
       System.out.println("Unexpected establish received");
     }
@@ -323,5 +323,18 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
   public ServerSessionEstablisher withOutboundKeepaliveInterval(int outboundKeepaliveInterval) {
     this.outboundKeepaliveInterval = outboundKeepaliveInterval;
     return this;
+  }
+
+  /* (non-Javadoc)
+   * @see org.fixtrading.silverflash.fixp.Establisher#complete()
+   */
+  @Override
+  public void complete() {
+    try {
+      establishmentAck(requestTimestamp, outboundKeepaliveInterval);
+    } catch (IOException e) {
+      // Apparently the client connection has gone away - nothing can be done until it reconnects
+      e.printStackTrace();
+    }
   }
 }

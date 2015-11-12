@@ -80,6 +80,10 @@ public class MulticastConsumerEstablisher implements Establisher, FlowReceiver, 
     }
   }
 
+  public void complete() {
+    
+  }
+
   @Override
   public void connected() {
   }

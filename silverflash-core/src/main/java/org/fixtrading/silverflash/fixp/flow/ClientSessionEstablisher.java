@@ -60,12 +60,13 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
 	 * 
 	 */
   public static final int DEFAULT_OUTBOUND_KEEPALIVE_INTERVAL = 5000;
+  private byte[] credentials;
   private FlowType inboundFlow;
   private int inboundKeepaliveInterval;
   private final MessageDecoder messageDecoder = new MessageDecoder();
   private final MessageEncoder messageEncoder;
-  private final FlowType outboundFlow;
 
+  private final FlowType outboundFlow;
   private int outboundKeepaliveInterval = DEFAULT_OUTBOUND_KEEPALIVE_INTERVAL;
   private final EventReactor<ByteBuffer> reactor;
   private long requestTimestamp;
@@ -75,7 +76,6 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
   private Topic terminatedTopic;
   private final Transport transport;
   private byte[] uuidAsBytes;
-  private byte[] credentials;
 
   /**
    * Constructor
@@ -91,32 +91,6 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
     this.outboundFlow = outboundFlow;
     this.transport = transport;
     this.messageEncoder = messageEncoder;
-  }
-
-  /**
-   * Sets the credentials for session negotiation
-   * 
-   * @param sessionId unique session identifier
-   * @param credentials business entity identification
-   * @return this ClientSessionEstablisher
-   */
-  public ClientSessionEstablisher withCredentials(UUID sessionId, byte[] credentials) {
-    Objects.requireNonNull(sessionId);
-    Objects.requireNonNull(credentials);
-    this.sessionId = sessionId;
-    this.credentials = credentials;
-    this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
-    terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
-    return this;
-  }
-
-
-  /**
-   * Sets the heartbeat interval
-   */
-  public ClientSessionEstablisher withOutboundKeepaliveInterval(int outboundKeepaliveInterval) {
-    this.outboundKeepaliveInterval = outboundKeepaliveInterval;
-    return this;
   }
 
   @Override
@@ -152,6 +126,15 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
     }
   }
 
+
+  /* (non-Javadoc)
+   * @see org.fixtrading.silverflash.fixp.Establisher#complete()
+   */
+  @Override
+  public void complete() {
+    
+  }
+
   @Override
   public void connected() {
     try {
@@ -159,6 +142,29 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
     } catch (IOException e) {
       reactor.post(terminatedTopic, null);
     }
+  }
+
+  /**
+   * Client function
+   * 
+   * @param keepaliveInterval heartbeat interval
+   * @throws IOException if message cannot be sent
+   */
+  void establish(int keepaliveInterval) throws IOException {
+    sessionMessageBuffer.clear();
+    EstablishEncoder establishEncoder =
+        (EstablishEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
+            MessageType.ESTABLISH);
+    requestTimestamp = System.nanoTime();
+    establishEncoder.setTimestamp(requestTimestamp);
+    establishEncoder.setSessionId(uuidAsBytes);
+    establishEncoder.setKeepaliveInterval(keepaliveInterval);
+    // todo: retrieve persisted seqNo for recoverable flow
+    establishEncoder.setNextSeqNoNull();
+    // Assuming that authentication is only done in Negotiate; may change
+    establishEncoder.setCredentialsNull();
+    send(sessionMessageBuffer);
+    // System.out.println("Establish sent");
   }
 
   @Override
@@ -202,43 +208,6 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
     return false;
   }
 
-  @Override
-  public long send(ByteBuffer message) throws IOException {
-    Objects.requireNonNull(message);
-    return transport.write(message);
-  }
-
-  public void sendEndOfStream() throws IOException {
-
-  }
-
-  public void sendHeartbeat() throws IOException {
-
-  }
-
-  /**
-   * Client function
-   * 
-   * @param keepaliveInterval heartbeat interval
-   * @throws IOException if message cannot be sent
-   */
-  void establish(int keepaliveInterval) throws IOException {
-    sessionMessageBuffer.clear();
-    EstablishEncoder establishEncoder =
-        (EstablishEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
-            MessageType.ESTABLISH);
-    requestTimestamp = System.nanoTime();
-    establishEncoder.setTimestamp(requestTimestamp);
-    establishEncoder.setSessionId(uuidAsBytes);
-    establishEncoder.setKeepaliveInterval(keepaliveInterval);
-    // todo: retrieve persisted seqNo for recoverable flow
-    establishEncoder.setNextSeqNoNull();
-    // Assuming that authentication is only done in Negotiate; may change
-    establishEncoder.setCredentialsNull();
-    send(sessionMessageBuffer);
-    // System.out.println("Establish sent");
-  }
-
   /**
    * Negotiate with server to create a new session
    * 
@@ -273,7 +242,7 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
       reactor.post(readyTopic, buffer);
       // System.out.println("Establishment ack received");
     } else {
-      System.out.println("Unexpected establishment ack received");
+      System.err.println("ClientSessionEstablisher: Unexpected establishment ack received");
     }
   }
 
@@ -314,5 +283,44 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
     } else {
       System.out.println("Unexpected negotiation response received");
     }
+  }
+
+  @Override
+  public long send(ByteBuffer message) throws IOException {
+    Objects.requireNonNull(message);
+    return transport.write(message);
+  }
+
+  public void sendEndOfStream() throws IOException {
+
+  }
+
+  public void sendHeartbeat() throws IOException {
+
+  }
+
+  /**
+   * Sets the credentials for session negotiation
+   * 
+   * @param sessionId unique session identifier
+   * @param credentials business entity identification
+   * @return this ClientSessionEstablisher
+   */
+  public ClientSessionEstablisher withCredentials(UUID sessionId, byte[] credentials) {
+    Objects.requireNonNull(sessionId);
+    Objects.requireNonNull(credentials);
+    this.sessionId = sessionId;
+    this.credentials = credentials;
+    this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
+    terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
+    return this;
+  }
+
+  /**
+   * Sets the heartbeat interval
+   */
+  public ClientSessionEstablisher withOutboundKeepaliveInterval(int outboundKeepaliveInterval) {
+    this.outboundKeepaliveInterval = outboundKeepaliveInterval;
+    return this;
   }
 }

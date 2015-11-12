@@ -83,7 +83,11 @@ public class MulticastProducerEstablisher implements Sender, Establisher, FlowRe
 
   @Override
   public void accept(ByteBuffer buffer) {
-   }
+  }
+
+  public void complete() {
+    
+  }
 
   @Override
   public void connected() {
