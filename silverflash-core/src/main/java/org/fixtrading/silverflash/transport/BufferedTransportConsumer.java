@@ -113,10 +113,10 @@ public class BufferedTransportConsumer implements BufferSupplier, Service, Trans
    */
   @Override
   public void accept(ByteBuffer source) {
-    long sequence = ringBuffer.next();
-    final BufferEvent event = ringBuffer.get(sequence);
-    event.set(EventType.DATA, source);
-    ringBuffer.publish(sequence);
+//    long sequence = ringBuffer.next();
+//    final BufferEvent event = ringBuffer.get(sequence);
+//    event.set(EventType.DATA, source);
+//    ringBuffer.publish(sequence);
   }
 
   /*
@@ -187,7 +187,7 @@ public class BufferedTransportConsumer implements BufferSupplier, Service, Trans
     switch (event.getEventType()) {
     case DATA:
       ByteBuffer buffer = event.getBuffer();
-      buffer.flip();
+//      buffer.flip();
       consumer.accept(buffer);
       break;
     case CONNECTED:
