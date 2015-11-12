@@ -41,6 +41,7 @@
 		<disruptor.version>3.3.2</disruptor.version>
 		<sbe.version>1.1.1-RC2</sbe.version>
 		<hdrhistogram.version>2.1.4</hdrhistogram.version>
+		<shouldUseIncrementalCompilation>true</shouldUseIncrementalCompilation>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -63,13 +64,14 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-compiler-plugin</artifactId>
-					<version>3.2</version>
+					<version>3.3</version>
 					<configuration>
 						<source>${java.version}</source>
 						<target>${java.version}</target>
 						<!-- Allows use of restricted classes -->
 						<fork>true</fork>
 						<compilerArgument>-XDignore.symbol.file</compilerArgument>
+						<useIncrementalCompilation>${shouldUseIncrementalCompilation}</useIncrementalCompilation>
 					</configuration>
 				</plugin>
 			</plugins>
