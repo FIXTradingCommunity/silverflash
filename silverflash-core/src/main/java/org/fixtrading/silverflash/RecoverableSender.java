@@ -34,11 +34,10 @@ public interface RecoverableSender extends Sender {
    * The message is opaque to the session protocol; it is treated as an arbitrary sequence of bytes.
    * 
    * @param message a buffer containing a message to send. Expectation of the buffer position on
-   *        entry is the same as for {@link java.nio.channels.WritableByteChannel#write}.
+   *        entry is the same as for {@code java.nio.channels.WritableByteChannel.write()}.
    * @param seqNo sequence number
    * @param requestTimestamp time that this retransmission was requested
    * @throws IOException if an IO error occurs
-   * @see java.nio.channels.WriteableByteChannel#write
    */
   void resend(ByteBuffer message, long seqNo, long requestTimestamp) throws IOException;
 

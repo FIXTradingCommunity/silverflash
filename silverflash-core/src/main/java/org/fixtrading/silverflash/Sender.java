@@ -35,11 +35,9 @@ public interface Sender {
    * The message is opaque to the session protocol; it is treated as an arbitrary sequence of bytes.
    * 
    * @param message a buffer containing a message to send. Expectation of the buffer position on
-   *        entry is the same as for {@link java.nio.channels.WritableByteChannel#write}.
+   *        entry is the same as for {@code java.nio.channels.WritableByteChannel.write()}.
    * @return sequence number of a successfully sent message or zero if the stream is unsequenced
    * @throws IOException if an IO error occurs
-   * @see java.nio.channels.WriteableByteChannel#write
-   * 
    */
   long send(ByteBuffer message) throws IOException;
 

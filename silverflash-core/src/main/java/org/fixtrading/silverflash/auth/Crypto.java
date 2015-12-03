@@ -92,8 +92,8 @@ public final class Crypto {
    * @param alias an alias for the certificate
    * @param distinguishedNames a string representation of an entry in a directory
    * @param keyPass password for this key
-   * @throws GeneralSecurityException
-   * @throws IOException
+   * @throws GeneralSecurityException if a security violation occurs
+   * @throws IOException if a certificate cannot be generated
    */
   public static void addKeyCertificateEntry(KeyStore ksKeys, String alias,
       String distinguishedNames, char[] keyPass) throws GeneralSecurityException, IOException {

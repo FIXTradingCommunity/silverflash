@@ -32,7 +32,7 @@ public interface Acceptor extends Service {
   /**
    * Returns a function that wraps an accepted Transport into a session of generic type
    * 
-   * @param T wrapper class for a Transport
+   * @param <T> wrapper class for a Transport
    * @return a function handle accepted connections
    */
   <T> Function<Transport, T> getTransportWrapper();

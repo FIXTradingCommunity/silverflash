@@ -74,7 +74,9 @@ public class RingBufferSupplier implements BufferSupplier, Service {
   };
 
   /**
-   * @param executor
+   * Constructor
+   * @param executor supplies threads to consume the ring buffer
+   * @param consumer receives buffered messages
    */
   public RingBufferSupplier(Executor executor, Receiver consumer) {
     this.executor = executor;

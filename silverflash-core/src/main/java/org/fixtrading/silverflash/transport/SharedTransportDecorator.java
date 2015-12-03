@@ -40,7 +40,7 @@ import org.fixtrading.silverflash.frame.FrameSpliterator;
  * Received messages are routed to sessions by session ID.
  * <p>
  * The Transport is not closed until all users close their reference to the Transport. Users of the
- * Transport are required to call {@link Transport#open(Supplier, TransportConsumer)} and {@link Transport#close()}
+ * Transport are required to call {@link Transport#open(BufferSupplier, TransportConsumer)} and {@link Transport#close()}
  * exactly one time each, as they would for a non-shared Transport, and they must not attempt to
  * send on the transport after closing.
  * 
@@ -309,8 +309,7 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
 
   /**
    * Open the Transport that this decorator wraps
-   * @throws ExecutionException if the asynchronous operation fails. Cause may be IOException.
-   * @throws InterruptedException if the asynchronous operation is interrupted
+   * @return a future telling the result asynchronous operation
    */
   public CompletableFuture<? extends Transport> openUnderlyingTransport() {
     if (openCount.getAndIncrement() == 0) {

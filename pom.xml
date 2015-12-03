@@ -22,7 +22,7 @@
 	<developers>
 		<developer>
 			<name>Don Mendelson</name>
-			<email>dmendelson@gmail.com</email>
+			<email>donmendelson@gmail.com</email>
 			<organization>FIX Trading Community</organization>
 			<organizationUrl>http://http://www.fixtradingcommunity.org/</organizationUrl>
 		</developer>
@@ -31,6 +31,10 @@
 		<developerConnection>scm:git:ssh://git@github.com/FIXTradingCommunity/silverflash.git</developerConnection>
 		<url>https://github.com/FIXTradingCommunity/silverflash</url>
 	</scm>
+	<issueManagement>
+		<system>GitHub</system>
+		<url>http://github.com/FIXTradingCommunity/silverflash/issues</url>
+	</issueManagement>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<junit.version>4.11</junit.version>
@@ -78,12 +82,38 @@
 		</pluginManagement>
 	</build>
 
+	<reporting>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-javadoc-plugin</artifactId>
+				<version>2.10.3</version>
+				<configuration>
+					<show>public</show>
+					<doctitle>Silver Flash API Reference ${project.version}</doctitle>
+					<windowtitle>Silver Flash API Reference ${project.version}</windowtitle>
+					<excludePackageNames>org.fixtrading.silverflash.examples*:**.generated</excludePackageNames>
+					<sourceFileExcludes>
+						<sourceFileExclude>*Benchmark.java</sourceFileExclude>
+					</sourceFileExcludes>
+				</configuration>
+				<reportSets>
+					<reportSet>
+						<id>default</id>
+						<reports>
+							<report>aggregate</report>
+						</reports>
+					</reportSet>
+				</reportSets>
+			</plugin>
+		</plugins>
+	</reporting>
+
 	<modules>
 		<module>silverflash-core</module>
 		<module>benchmark</module>
 		<module>behavior</module>
 		<module>perftest</module>
 		<module>cassandra-store</module>
-
 	</modules>
 </project>
