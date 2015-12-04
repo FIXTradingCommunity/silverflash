@@ -21,18 +21,17 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.Selector;
 import java.util.Arrays;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.fixtrading.silverflash.buffer.RingBufferSupplier;
 import org.fixtrading.silverflash.util.platform.AffinityThreadFactory;
-import org.openjdk.jmh.annotations.AuxCounters;
 import org.openjdk.jmh.annotations.Benchmark;
-import org.openjdk.jmh.annotations.Level;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
@@ -173,7 +172,7 @@ public class UdpTransportBenchmark {
   }
 
   @Setup
-  public void initTestEnvironment() throws IOException, InterruptedException, ExecutionException {
+  public void initTestEnvironment() throws IOException, InterruptedException, ExecutionException, TimeoutException {
     startSignal = new CountDownLatch(1);
     message = new byte[bufferSize];
     Arrays.fill(message, (byte) 'x');
@@ -210,20 +209,21 @@ public class UdpTransportBenchmark {
     BufferedTransportConsumer clientBuffers =
         new BufferedTransportConsumer(clientThreadPool, clientReceiver);
 
+    CompletableFuture<? extends Transport> future;
     if (isDemultiplexed) {
       clientIOReactor = new IOReactor(threadFactory);
       clientIOReactor.open().get();
       clientTransport =
           createClientTransport(clientIOReactor.getSelector(), serverAddress, clientAddress);
-      clientTransport.open(clientBuffers, clientBuffers);
+      future = clientTransport.open(clientBuffers, clientBuffers);
     } else {
       Dispatcher dispatcher = new Dispatcher(threadFactory);
       clientTransport = createClientTransport(dispatcher, serverAddress, clientAddress);
-      clientTransport.open(clientBuffers, clientBuffers);
+      future = clientTransport.open(clientBuffers, clientBuffers);
       dispatcher.addTransport(clientTransport);
     }
 
-    startSignal.await(1000L, TimeUnit.MILLISECONDS);
+    future.get(1000L, TimeUnit.MILLISECONDS);
     // client gets accepted signal before server transport is fully constructed
     Thread.sleep(500L);
   }

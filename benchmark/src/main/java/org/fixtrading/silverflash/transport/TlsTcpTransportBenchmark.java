@@ -30,9 +30,9 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 import org.fixtrading.silverflash.auth.Crypto;
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
 import org.fixtrading.silverflash.transport.IOReactor;
 import org.fixtrading.silverflash.transport.TlsTcpAcceptor;
@@ -116,7 +116,7 @@ public class TlsTcpTransportBenchmark {
   @Param({"128", "256", "1024"})
   public int bufferSize;
 
-  private Supplier<ByteBuffer> clientBuffers;
+  private BufferSupplier clientBuffers;
   private TlsTcpConnectorTransport clientTransport;
   private IOReactor serverIOReactor;
   private IOReactor clientIOReactor;

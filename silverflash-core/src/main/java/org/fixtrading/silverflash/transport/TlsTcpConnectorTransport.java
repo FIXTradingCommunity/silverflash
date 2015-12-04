@@ -75,6 +75,7 @@ public class TlsTcpConnectorTransport extends AbstractTlsChannel implements Conn
 
     try {
       this.socketChannel = SocketChannel.open();
+      configureChannel();
       register(SelectionKey.OP_CONNECT);
       this.socketChannel.connect(remoteAddress);
     } catch (IOException ex) {

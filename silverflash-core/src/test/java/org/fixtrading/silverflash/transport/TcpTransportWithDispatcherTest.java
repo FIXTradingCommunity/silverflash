@@ -28,6 +28,7 @@ import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
 import org.fixtrading.silverflash.transport.IOReactor;
@@ -82,12 +83,10 @@ public class TcpTransportWithDispatcherTest {
   private Transport serverTransport;
   private TcpConnectorTransport clientTransport;
   private IOReactor iOReactor;
-  private CountDownLatch startSignal;
   private AffinityThreadFactory threadFactory;
 
   @Before
   public void setUp() throws Exception {
-    startSignal = new CountDownLatch(1);
     messages = new byte[messageCount][];
     for (int i = 0; i < messageCount; ++i) {
       messages[i] = new byte[i];
@@ -112,7 +111,7 @@ public class TcpTransportWithDispatcherTest {
   }
 
   @Test
-  public void testSend() throws IOException, InterruptedException, ExecutionException {
+  public void testSend() throws IOException, InterruptedException, ExecutionException, TimeoutException {
 
     InetSocketAddress serverAddress = new InetSocketAddress(InetAddress.getLoopbackAddress(), 7543);
 
@@ -135,7 +134,7 @@ public class TcpTransportWithDispatcherTest {
 
         @Override
         public void connected() {
-          startSignal.countDown();
+          
         }
 
         @Override
@@ -146,9 +145,8 @@ public class TcpTransportWithDispatcherTest {
 
       clientTransport.open(
           new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),
-          clientReceiver);
-
-      startSignal.await(1000L, TimeUnit.MILLISECONDS);
+          clientReceiver).get(3000L, TimeUnit.MILLISECONDS);
+      
       // client gets accepted signal before server transport is fully constructed
       Thread.sleep(500L);
       assertTrue(serverReceiver.isConnected());
@@ -175,7 +173,7 @@ public class TcpTransportWithDispatcherTest {
   }
 
   @Test
-  public void testSendBuffers() throws IOException, InterruptedException, ExecutionException {
+  public void testSendBuffers() throws IOException, InterruptedException, ExecutionException, TimeoutException {
 
     InetSocketAddress serverAddress = new InetSocketAddress(InetAddress.getLoopbackAddress(), 7543);
 
@@ -198,7 +196,7 @@ public class TcpTransportWithDispatcherTest {
 
         @Override
         public void connected() {
-          startSignal.countDown();
+          
         }
 
         @Override
@@ -209,9 +207,8 @@ public class TcpTransportWithDispatcherTest {
 
       clientTransport.open(
           new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),
-          clientReceiver);
-
-      startSignal.await(1000L, TimeUnit.MILLISECONDS);
+          clientReceiver).get(3000L, TimeUnit.MILLISECONDS);
+      
       // client gets accepted signal before server transport is fully constructed
       Thread.sleep(500L);
       assertTrue(serverReceiver.isConnected());

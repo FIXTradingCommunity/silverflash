@@ -99,16 +99,6 @@ abstract class AbstractTcpChannel implements ReactiveTransport {
     return isOpen();
   }
 
-  public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
-    Objects.requireNonNull(buffers);
-    Objects.requireNonNull(consumer);
-    this.buffers = buffers;
-    this.consumer = consumer;
-    if (dispatcher != null) {
-      dispatcher.addTransport(this);
-    }
-  }
-
   public int read() throws IOException {
     ByteBuffer buffer = buffers.get();
     buffer.clear();
@@ -200,10 +190,13 @@ abstract class AbstractTcpChannel implements ReactiveTransport {
 
   protected void register(int ops) throws IOException {
     socketChannel.configureBlocking(false);
-    socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
     if (selector != null) {
       socketChannel.register(selector, ops, this);
     }
+  }
+
+  protected void configureChannel() throws IOException {
+    socketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
   }
 
   protected void removeInterest(int ops) {

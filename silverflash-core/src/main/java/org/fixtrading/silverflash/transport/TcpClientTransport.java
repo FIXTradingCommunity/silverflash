@@ -51,6 +51,7 @@ class TcpClientTransport extends AbstractTcpChannel {
     CompletableFuture<TcpClientTransport> future = new CompletableFuture<TcpClientTransport>();
 
     try {
+      configureChannel();
       register(SelectionKey.OP_READ);
       consumer.connected();
       future.complete(this);

@@ -29,6 +29,8 @@ import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.fixtrading.silverflash.auth.Crypto;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
@@ -110,7 +112,7 @@ public class TlsTcpTransportTest {
 
   @Test
   public void testSend() throws IOException, GeneralSecurityException, InterruptedException,
-      ExecutionException {
+      ExecutionException, TimeoutException {
 
     final InetAddress localHost = InetAddress.getLocalHost();
     boolean isLoopback = localHost.isLoopbackAddress();
@@ -138,7 +140,7 @@ public class TlsTcpTransportTest {
 
       connectorTransport.open(
           new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),
-          clientReceiver);
+          clientReceiver).get(1000L, TimeUnit.MILLISECONDS);
 
       try {
         Thread.sleep(500);

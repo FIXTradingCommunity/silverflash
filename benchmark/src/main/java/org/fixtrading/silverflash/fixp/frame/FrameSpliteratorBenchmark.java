@@ -24,6 +24,7 @@ import java.util.function.Consumer;
 import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
 import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
 import org.fixtrading.silverflash.frame.MessageFrameEncoder;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
 import org.openjdk.jmh.annotations.AuxCounters;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -72,6 +73,12 @@ public class FrameSpliteratorBenchmark {
     ByteBuffer message =
         ByteBuffer.allocate(messageLength - SbeMessageHeaderDecoder.getLength()).order(
             ByteOrder.nativeOrder());
+    
+    sbeHeaderEncoder = new SbeMessageHeaderDecoder();
+    spliterator = new MessageLengthFrameSpliterator();
+    frameEncoder = new MessageLengthFrameEncoder();
+    sbeEncoder = new SbeMessageHeaderEncoder();
+
     for (int i = 0; i < message.limit(); i++) {
       message.put((byte) i);
     }
@@ -79,8 +86,6 @@ public class FrameSpliteratorBenchmark {
     for (int i = 0; i < numberOfMessages; i++) {
       encodeApplicationMessage(buffer, message);
     }
-    sbeHeaderEncoder = new SbeMessageHeaderDecoder();
-    spliterator = new MessageLengthFrameSpliterator();
   }
 
   @Benchmark

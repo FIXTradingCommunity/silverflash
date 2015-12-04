@@ -74,12 +74,18 @@ public class TcpConnectorTransport extends AbstractTcpChannel implements Connect
 
     try {
       this.socketChannel = SocketChannel.open();
+      configureChannel();
+      socketChannel.configureBlocking(true);
       if (selector != null) {
         register(SelectionKey.OP_CONNECT);
       }
 
       this.socketChannel.connect(remoteAddress);
 
+      if (this.socketChannel.isConnected()) {
+        future.complete(this);
+      }
+      
       if (dispatcher != null) {
         dispatcher.addTransport(this);
       }

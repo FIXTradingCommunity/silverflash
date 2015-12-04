@@ -24,18 +24,13 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.Selector;
 import java.util.Arrays;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
+import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
-import org.fixtrading.silverflash.transport.IOReactor;
-import org.fixtrading.silverflash.transport.TcpAcceptor;
-import org.fixtrading.silverflash.transport.TcpConnectorTransport;
-import org.fixtrading.silverflash.transport.Transport;
-import org.fixtrading.silverflash.transport.TransportConsumer;
 import org.fixtrading.silverflash.util.platform.AffinityThreadFactory;
 import org.openjdk.jmh.annotations.AuxCounters;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -64,7 +59,8 @@ public class TcpTransportBenchmark {
 
     @Override
     public void connected() {
-      startSignal.countDown();
+      //
+      
     }
 
     @Override
@@ -114,15 +110,14 @@ public class TcpTransportBenchmark {
   @Param({"128", "256", "1024"})
   public int bufferSize;
 
-  private Supplier<ByteBuffer> clientBuffers;
+  private BufferSupplier clientBuffers;
   private TcpConnectorTransport clientTransport;
   private IOReactor serverIOReactor;
   private IOReactor clientIOReactor;
   private byte[] message;
   private ByteBuffer[] srcs;
   private TcpAcceptor tcpAcceptor;
-  private CountDownLatch startSignal;
-
+  
   private Function<Transport, Transport> transportWrapper = new Function<Transport, Transport>() {
 
     public Transport apply(Transport transport) {
@@ -149,8 +144,7 @@ public class TcpTransportBenchmark {
   }
 
   @Setup
-  public void initTestEnvironment() throws IOException, InterruptedException, ExecutionException {
-    startSignal = new CountDownLatch(1);
+  public void initTestEnvironment() throws IOException, InterruptedException, ExecutionException, TimeoutException {
     message = new byte[bufferSize];
     Arrays.fill(message, (byte) 'x');
     srcs = new ByteBuffer[batchSize];
@@ -176,11 +170,9 @@ public class TcpTransportBenchmark {
     clientBuffers =
         new SingleBufferSupplier(ByteBuffer.allocate(bufferSize * batchSize * 64).order(
             ByteOrder.nativeOrder()));
-    clientTransport.open(clientBuffers, new InjectorConsumer());
-
-    startSignal.await(1000L, TimeUnit.MILLISECONDS);
+    clientTransport.open(clientBuffers, new InjectorConsumer()).get(3000L, TimeUnit.MILLISECONDS);
     // client gets accepted signal before server transport is fully constructed
-    Thread.sleep(500L);
+    Thread.sleep(2000L);
   }
 
   private TcpConnectorTransport createClientTcpTransport(Dispatcher dispatcher, InetSocketAddress remoteAddress) {

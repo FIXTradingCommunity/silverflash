@@ -9,6 +9,8 @@
 	<name>${project.groupId}:${project.artifactId}</name>
 	<description>Parent project for FIXP session protocol implementation</description>
 	<url>https://github.com/FIXTradingCommunity/silverflash/wiki</url>
+	<inceptionYear>2015</inceptionYear>
+	
 	<organization>
 		<name>FIX Trading Community</name>
 		<url>http://http://www.fixtradingcommunity.org/</url>
@@ -35,6 +37,11 @@
 		<system>GitHub</system>
 		<url>http://github.com/FIXTradingCommunity/silverflash/issues</url>
 	</issueManagement>
+	<ciManagement>
+		<system>Travis CI</system>
+		<url>https://travis-ci.org/FIXTradingCommunity/silverflash</url>
+	</ciManagement>
+	
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<junit.version>4.11</junit.version>
@@ -47,6 +54,7 @@
 		<hdrhistogram.version>2.1.4</hdrhistogram.version>
 		<shouldUseIncrementalCompilation>true</shouldUseIncrementalCompilation>
 	</properties>
+	
 	<dependencies>
 		<dependency>
 			<groupId>junit</groupId>
@@ -116,4 +124,5 @@
 		<module>perftest</module>
 		<module>cassandra-store</module>
 	</modules>
+	
 </project>

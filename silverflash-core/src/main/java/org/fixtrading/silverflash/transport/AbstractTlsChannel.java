@@ -24,7 +24,6 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
-import java.util.function.Supplier;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -126,16 +125,6 @@ abstract class AbstractTlsChannel extends AbstractTcpChannel {
     if (consumer != null) {
       consumer.disconnected();
     }
-  }
-
-  /*
-   * (non-Javadoc)
-   * 
-   * @see org.fixtrading.silverflash.transport.Transport#open(java.util.function.Supplier,
-   * org.fixtrading.silverflash.transport.TransportConsumer)
-   */
-  public void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer) throws IOException {
-
   }
 
   /*

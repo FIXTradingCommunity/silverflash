@@ -61,6 +61,7 @@ class TlsTcpClientTransport extends AbstractTlsChannel {
     peerAppData.position(peerAppData.limit());
     netData.position(netData.limit());
     try {
+      configureChannel();
       register(0);
       engine.beginHandshake();
       hsStatus = engine.getHandshakeStatus();
