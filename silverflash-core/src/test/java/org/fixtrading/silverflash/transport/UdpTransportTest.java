@@ -51,7 +51,7 @@ public class UdpTransportTest {
     public void accept(ByteBuffer buf) {
       int bytesToReceive = buf.remaining();
       bytesReceived += bytesToReceive;
-      buf.get(dst, 0, bytesToReceive);
+      buf.get(dst, 0, Math.min(bytesToReceive, dst.length));
     }
 
     @Override
