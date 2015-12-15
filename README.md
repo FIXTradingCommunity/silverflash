@@ -14,7 +14,7 @@ point-to-point exchange of application messages as well as multicasts for market
 
 FIXP is part of a family of protocols created by the High Performance Working Group
 of the FIX Trading Community. FIXP is a session layer protocol (OSI layer 5). 
-See specifications at [FIXTradingCommunity/fixp-specification](https://github.com/FIXTradingCommunity/fixp-specification).
+See specifications at [FIXTradingCommunity/fixp-specification](https://github.com/FIXTradingCommunity/fixp-specification). *This implementation is intended to ease development but it is non-normative for the FIXP protocol. The specification is the ultimate authority.*
 
 At presentation layer (layer 6), this implementation uses Simple Binary Encoding, a high-performance binary encoding of FIX. 
 See specifications at [FIXTradingCommunity/fix-simple-binary-encoding](https://github.com/FIXTradingCommunity/fix-simple-binary-encoding).
