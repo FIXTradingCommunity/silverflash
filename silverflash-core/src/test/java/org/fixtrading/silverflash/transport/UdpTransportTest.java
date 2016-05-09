@@ -40,6 +40,7 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 
+@Ignore
 public class UdpTransportTest {
 
   class TestReceiver implements TransportConsumer {
@@ -164,7 +165,6 @@ public class UdpTransportTest {
     assertEquals(totalBytesSent, serverReceiver.getBytesReceived());
   }
  
-  @Ignore
   @Test
   public void multicast() throws IOException, InterruptedException, ExecutionException, TimeoutException {
     NetworkInterface networkInterface = getMulticastInterface();

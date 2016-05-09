@@ -23,7 +23,7 @@ At transport layer (layer 4), this project provides wrappers for common transpor
 and UDP, as well as interprocess communications for internal messaging.
 
 ## License
-©Copyright 2015 FIX Protocol Limited
+© Copyright 2015-2016 FIX Protocol Limited
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>org.fixtrading.silverflash</groupId>
 	<artifactId>silverflash-parent</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>1.0.0-SNAPSHOT</version>
 	<packaging>pom</packaging>
 	<name>${project.groupId}:${project.artifactId}</name>
 	<description>Parent project for FIXP session protocol implementation</description>
@@ -47,11 +47,12 @@
 		<junit.version>4.11</junit.version>
 		<java.version>1.8</java.version>
 		<cucumber.version>1.2.4</cucumber.version>
-		<jna.version>4.1.0</jna.version>
+		<jna.version>4.2.2</jna.version>
 		<cli.version>1.3.1</cli.version>
-		<disruptor.version>3.3.2</disruptor.version>
-		<sbe.version>1.1.1-RC2</sbe.version>
-		<hdrhistogram.version>2.1.4</hdrhistogram.version>
+		<disruptor.version>3.3.4</disruptor.version>
+		<sbe.version>1.1.7-RC2</sbe.version>
+		<hdrhistogram.version>2.1.8</hdrhistogram.version>
+		<slf4j.version>1.7.21</slf4j.version>
 		<shouldUseIncrementalCompilation>true</shouldUseIncrementalCompilation>
 	</properties>
 	
@@ -76,7 +77,7 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-compiler-plugin</artifactId>
-					<version>3.3</version>
+					<version>3.5.1</version>
 					<configuration>
 						<source>${java.version}</source>
 						<target>${java.version}</target>

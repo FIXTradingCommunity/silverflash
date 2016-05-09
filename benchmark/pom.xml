@@ -31,7 +31,7 @@
 		<plugins>
 			<plugin>
 				<artifactId>maven-shade-plugin</artifactId>
-				<version>2.0</version>
+				<version>2.4.3</version>
 				<executions>
 					<execution>
 						<phase>package</phase>
@@ -53,7 +53,7 @@
 		</plugins>
 	</build>
 	<properties>
-		<jmh.version>1.11.2</jmh.version>
+		<jmh.version>1.12</jmh.version>
 		<shouldUseIncrementalCompilation>false</shouldUseIncrementalCompilation>
 	</properties>
 	<description>Microbenchmarks for FIXP engine implementation</description>
