@@ -23,6 +23,7 @@ import static org.fixtrading.silverflash.fixp.SessionEventTopics.ToSessionEventT
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -84,6 +85,7 @@ public class IdempotentFlowReceiver extends AbstractReceiverFlow implements Flow
   @SuppressWarnings("rawtypes")
   protected IdempotentFlowReceiver(Builder builder) {
     super(builder);
+    Objects.requireNonNull(messageConsumer);
     notAppliedEncoder = (NotAppliedEncoder) messageEncoder.wrap(notAppliedBuffer, 0,
         MessageType.NOT_APPLIED);
     notAppliedBuffer.limit(SbeMessageHeaderDecoder.getLength() + notAppliedEncoder.getBlockLength());
@@ -132,7 +134,7 @@ public class IdempotentFlowReceiver extends AbstractReceiverFlow implements Flow
       final long seqNo = nextSeqNoReceived.getAndIncrement();
       if (nextSeqNoAccepted.compareAndSet(seqNo, seqNo)) {
         nextSeqNoAccepted.incrementAndGet();
-        streamReceiver.accept(buffer, session, seqNo);
+        messageConsumer.accept(buffer, session, seqNo);
       }
     }
   }

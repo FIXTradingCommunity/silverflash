@@ -330,7 +330,20 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     }
   }
 
-  private class EstablishedHandler implements Receiver {
+  private enum Role {
+    CLIENT, MULTICAST_CONSUMER, MULTICAST_PRODUCER, SERVER
+  }
+
+  @SuppressWarnings("rawtypes")
+  public static Builder builder() {
+    return new Builder();
+  }
+
+  private Subscription applicationMessageToSendSubscription;
+
+  private final BufferSupplier buffers;
+
+  private final Receiver establishedHandler = new Receiver() {
 
     @Override
     public void accept(ByteBuffer buffer) {
@@ -350,30 +363,17 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
       reactor.post(readyTopic, buffer);
       // System.out.println("FixpSession established"); 
     }
-  }
-
-  private enum Role {
-    CLIENT, MULTICAST_CONSUMER, MULTICAST_PRODUCER, SERVER
-  }
-
-  @SuppressWarnings("rawtypes")
-  public static Builder builder() {
-    return new Builder();
-  }
-
-  private Subscription applicationMessageToSendSubscription;
-  private final BufferSupplier buffers;
+  };
   private Subscription establishedSubscription;
   private final Establisher establisher;
-
   private ExceptionConsumer exceptionConsumer = System.err::println;
 
   private FlowReceiver flowReceiver;
+
   private FlowSender flowSender;
   private FrameSpliterator frameSpliter;
   private boolean isMultiplexedTransport;
   private final MessageConsumer<UUID> messageConsumer;
-
   private MessageEncoder messageEncoder;
 
   private final Receiver negotiatedHandler = new Receiver() {
@@ -389,12 +389,13 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
       sessionId = SessionId.UUIDFromBytes(uuidAsBytes);
 
       Topic establishedTopic = SessionEventTopics.getTopic(sessionId, SERVER_ESTABLISHED);
-      establishedSubscription = reactor.subscribe(establishedTopic, new EstablishedHandler());
+      establishedSubscription = reactor.subscribe(establishedTopic, establishedHandler);
     }
   };
-  private Subscription negotiatedSubscription;
 
+  private Subscription negotiatedSubscription;
   private final FlowType outboundFlow;
+
   // Supports asynchronous message send
   private final Receiver outboundMessageHandler = new Receiver() {
 
@@ -423,10 +424,27 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
   private final EventReactor<ByteBuffer> reactor;
   private UUID sessionId = SessionId.EMPTY;
   private Topic sessionSuspendedTopic;
-
   private MessageStore store;
 
   private Subscription terminatedSubscription;
+
+  private final Receiver topicHandler = new Receiver() {
+
+    @Override
+    public void accept(ByteBuffer buffer) {
+      if (establishedSubscription != null) {
+        establishedSubscription.unsubscribe();
+      }
+
+      uuidAsBytes = establisher.getSessionId();
+      sessionId = SessionId.UUIDFromBytes(uuidAsBytes);
+
+      setInboundStream();
+      setOutboundStream();
+
+      establisher.complete();
+    }
+  };
 
   private final Transport transport;
 
@@ -496,7 +514,8 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
 
     if (builder.messageEncoder != null) {
       messageEncoder = builder.messageEncoder;
-    } else if (builder.role != Role.MULTICAST_CONSUMER) {
+    } else {
+      // Encode NotApplied for event handling even when not sent by multicast consumer
       messageEncoder = new MessageEncoder(MessageLengthFrameEncoder.class);
     }
 
@@ -554,7 +573,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
         outboundFlow, getTransport(), messageEncoder).withCredentials(sessionId, credentials);
 
     Topic initTopic = SessionEventTopics.getTopic(sessionId, CLIENT_ESTABLISHED);
-    establishedSubscription = reactor.subscribe(initTopic, new EstablishedHandler());
+    establishedSubscription = reactor.subscribe(initTopic, establishedHandler);
 
     return clientSessionEstablisher;
   }
@@ -564,7 +583,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
         reactor, getTransport()).withTopic(topic);
 
     Topic initTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, topic);
-    establishedSubscription = reactor.subscribe(initTopic, new EstablishedHandler());
+    establishedSubscription = reactor.subscribe(initTopic, topicHandler);
 
     return clientSessionEstablisher;
   }
@@ -578,7 +597,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
         reactor, getTransport(), outboundFlow, topic, sessionId, messageEncoder);
 
     Topic initTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, topic);
-    establishedSubscription = reactor.subscribe(initTopic, new EstablishedHandler());
+    establishedSubscription = reactor.subscribe(initTopic, establishedHandler);
 
     return serverSessionEstablisher;
   }

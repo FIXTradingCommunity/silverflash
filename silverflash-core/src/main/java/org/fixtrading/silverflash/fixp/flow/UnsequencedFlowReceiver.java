@@ -21,6 +21,7 @@ import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventTyp
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.PEER_TERMINATED;
 
 import java.nio.ByteBuffer;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -68,6 +69,8 @@ public class UnsequencedFlowReceiver extends AbstractReceiverFlow implements Flo
 
   protected UnsequencedFlowReceiver(Builder builder) {
     super(builder);
+    Objects.requireNonNull(messageConsumer);
+
     terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
 
     final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, PEER_HEARTBEAT);
@@ -99,7 +102,7 @@ public class UnsequencedFlowReceiver extends AbstractReceiverFlow implements Flo
     }
     if (isApplicationMessage && !isEndOfStream) {
       isHeartbeatDue.set(false);
-      streamReceiver.accept(buffer, session, 0);
+      messageConsumer.accept(buffer, session, 0);
     }
   }
 

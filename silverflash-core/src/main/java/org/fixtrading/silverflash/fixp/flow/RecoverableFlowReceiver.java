@@ -25,6 +25,7 @@ import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventTyp
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -92,6 +93,8 @@ public class RecoverableFlowReceiver extends AbstractReceiverFlow
 
   protected RecoverableFlowReceiver(Builder builder) {
     super(builder);
+    Objects.requireNonNull(messageConsumer);
+
     retransmissionRequestEncoder = (RetransmissionRequestEncoder) messageEncoder
         .wrap(retransmissionRequestBuffer, 0, MessageType.RETRANSMIT_REQUEST);
     retransmissionRequestBuffer
@@ -139,12 +142,12 @@ public class RecoverableFlowReceiver extends AbstractReceiverFlow
         final long seqNo = nextSeqNoReceived.getAndIncrement();
         if (nextSeqNoAccepted.compareAndSet(seqNo, seqNo)) {
           nextSeqNoAccepted.incrementAndGet();
-          streamReceiver.accept(buffer, session, seqNo);
+          messageConsumer.accept(buffer, session, seqNo);
         }
       } else {
         final long seqNo = nextRetransSeqNoReceived.getAndIncrement();
         if (seqNo <= lastRetransSeqNoToAccept) {
-          streamReceiver.accept(buffer, session, seqNo);
+          messageConsumer.accept(buffer, session, seqNo);
         }
       }
     }

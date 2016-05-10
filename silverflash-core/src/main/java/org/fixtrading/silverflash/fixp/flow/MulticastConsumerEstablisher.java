@@ -54,7 +54,7 @@ public class MulticastConsumerEstablisher implements Establisher, FlowReceiver, 
   private UUID sessionId;
   private byte [] topic;
   private final Transport transport;
-  private byte[] uuidAsBytes;
+  private byte[] uuidAsBytes = new byte[16];
 
   /**
    * Constructor
@@ -133,19 +133,17 @@ public class MulticastConsumerEstablisher implements Establisher, FlowReceiver, 
   void onTopic(TopicDecoder topicDecoder) {
     final ByteBuffer buffer = topicDecoder.getBuffer();
     buffer.mark();
-    byte[] uuid = new byte[16];
-    topicDecoder.getSessionId(uuid, 0);
+    topicDecoder.getSessionId(this.uuidAsBytes, 0);
+    this.sessionId = SessionId.UUIDFromBytes(uuidAsBytes);
     FlowType aFlow = topicDecoder.getFlow();
     byte[] aTopic = new byte[topic.length];
     topicDecoder.getClassfication(aTopic, 0);
     if (Arrays.equals(topic, aTopic)) {
-      sessionId = SessionId.UUIDFromBytes(uuid);
       inboundFlow = aFlow;
       Topic readyTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, new String(topic));
       buffer.reset();
       ByteBuffer bufferCopy = buffer.duplicate();
       reactor.post(readyTopic, buffer);
-      publishNewSession(bufferCopy);
     }
   }
 

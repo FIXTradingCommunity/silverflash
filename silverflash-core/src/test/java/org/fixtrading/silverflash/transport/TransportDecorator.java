@@ -27,16 +27,33 @@ import org.fixtrading.silverflash.transport.TransportConsumer;
 public class TransportDecorator implements Transport {
   private final Transport component;
   private final boolean isFifo;
+  private final boolean isReadable;
+  private final boolean isWritable;
 
   /**
-   * Wrap a Transport
+   * Wrap a bidirectional Transport
    * 
    * @param component a Transport to wrap
    * @param isFifo override attribute of the Transport
    */
   public TransportDecorator(Transport component, boolean isFifo) {
+    this(component, isFifo, true, true);
+  }
+  
+  /**
+   * Wrap as a unidirectional Transport
+   * 
+   * @param component a Transport to wrap
+   * @param isFifo override attribute of the Transport
+   * @param isReadable is transport readable
+   * @param isWritable is transport writable
+   */
+  public TransportDecorator(Transport component, boolean isFifo, 
+      boolean isReadable, boolean isWritable) {
     this.component = component;
     this.isFifo = isFifo;
+    this.isReadable = isReadable;
+    this.isWritable = isWritable;
   }
 
   public void close() {
@@ -51,23 +68,6 @@ public class TransportDecorator implements Transport {
     return false;
   }
 
-  public CompletableFuture<? extends Transport> open(BufferSupplier buffers,
-      TransportConsumer consumer) {
-    return component.open(buffers, consumer);
-  }
-
-  public int read() throws IOException {
-    return component.read();
-  }
-
-  public int write(ByteBuffer src) throws IOException {
-    return component.write(src);
-  }
-
-  public long write(ByteBuffer[] srcs) throws IOException {
-    return component.write(srcs);
-  }
-
   @Override
   public boolean isOpen() {
     return component.isOpen();
@@ -79,5 +79,34 @@ public class TransportDecorator implements Transport {
   @Override
   public boolean isReadyToRead() {
     return component.isReadyToRead();
+  }
+
+  public CompletableFuture<? extends Transport> open(BufferSupplier buffers,
+      TransportConsumer consumer) {
+    return component.open(buffers, consumer);
+  }
+
+  public int read() throws IOException {    
+    if (isReadable) {
+      return component.read();
+    } else {
+      throw new IOException("Transport not readable");
+    }
+  }
+
+  public int write(ByteBuffer src) throws IOException {
+    if (isWritable) {
+      return component.write(src);
+    } else {
+      throw new IOException("Transport not writable");
+    }
+  }
+
+  public long write(ByteBuffer[] srcs) throws IOException {
+    if (isWritable) {
+      return component.write(srcs);
+    } else {
+      throw new IOException("Transport not writable");
+    }
   }
 }

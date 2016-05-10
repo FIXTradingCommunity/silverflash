@@ -41,7 +41,7 @@ class AbstractReceiverFlow {
     private Sequencer sequencer;
     private UUID sessionId;
     private Transport transport;
-    private MessageConsumer<UUID> streamReceiver;
+    private MessageConsumer<UUID> messageConsumer;
     private Session<UUID> session;
 
       public abstract T build();
@@ -82,8 +82,8 @@ class AbstractReceiverFlow {
       return (B) this;
     }
     
-    public B withMessageConsumer(MessageConsumer<UUID> streamReceiver) {
-      this.streamReceiver = streamReceiver;
+    public B withMessageConsumer(MessageConsumer<UUID> messageConsumer) {
+      this.messageConsumer = messageConsumer;
       return (B) this;
     }
     public B withSession(Session<UUID> session) {
@@ -100,20 +100,19 @@ class AbstractReceiverFlow {
   protected final UUID sessionId;
   protected final Transport transport;
   protected final byte[] uuidAsBytes;
-  protected final MessageConsumer<UUID> streamReceiver;
+  protected final MessageConsumer<UUID> messageConsumer;
   protected final Session<UUID> session;
 
   protected AbstractReceiverFlow(Builder<?, ?> builder) {
     Objects.requireNonNull(builder.reactor);
     Objects.requireNonNull(builder.transport);
-    Objects.requireNonNull(builder.streamReceiver);
     Objects.requireNonNull(builder.session);
     this.reactor = builder.reactor;
     this.transport = builder.transport;
     this.sequencer = builder.sequencer;
     this.messageEncoder = builder.messageEncoder;
     this.keepaliveInterval = builder.keepaliveInterval;
-    this.streamReceiver = builder.streamReceiver;
+    this.messageConsumer = builder.messageConsumer;
     this.session = builder.session;
     this.sessionId = session.getSessionId();
     this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);

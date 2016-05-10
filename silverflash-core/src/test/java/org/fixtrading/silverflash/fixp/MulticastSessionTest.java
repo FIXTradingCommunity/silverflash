@@ -23,6 +23,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Session;
@@ -66,8 +67,7 @@ public class MulticastSessionTest {
   private static final int schemaVersion = 0;
   private static final int schemaId = 33;
 
-  private Engine engine;
-  private EventReactor<ByteBuffer> reactor2;
+  private Engine engine1, engine2;
   private PipeTransport memoryTransport;
   private int messageCount = Byte.MAX_VALUE;
   private byte[][] messages;
@@ -81,17 +81,15 @@ public class MulticastSessionTest {
     frameEncoder = new MessageLengthFrameEncoder();
     sbeEncoder = new SbeMessageHeaderEncoder();
 
-    engine =
+    engine1 =
         Engine.builder().build();
-    engine.open();
+    engine1.open();
 
-    reactor2 =
-        EventReactor.builder().withDispatcher(new ByteBufferDispatcher())
-            .withPayloadAllocator(new ByteBufferPayload(2048)).build();
-
-    reactor2.open().get();
-
-    memoryTransport = new PipeTransport(engine.getIOReactor().getSelector());
+    engine2 =
+        Engine.builder().build();
+    engine2.open();
+    
+    memoryTransport = new PipeTransport(engine1.getIOReactor().getSelector());
 
     messages = new byte[messageCount][];
     for (int i = 0; i < messageCount; ++i) {
@@ -102,22 +100,21 @@ public class MulticastSessionTest {
 
   @After
   public void tearDown() throws Exception {
-    engine.close();
-    reactor2.close();
+    engine1.close();
+    engine2.close();
   }
 
-  @Ignore
   @Test
   public void multicast() throws Exception {
     Transport serverTransport = memoryTransport.getServerTransport();
-    TransportDecorator nonFifoServerTransport = new TransportDecorator(serverTransport, false);
+    TransportDecorator nonFifoServerTransport = new TransportDecorator(serverTransport, false, false, true);
     TestReceiver serverReceiver = new TestReceiver();
     String topic = "options";
 
     FixpSession producerSession =
         FixpSession
             .builder()
-            .withReactor(engine.getReactor())
+            .withReactor(engine1.getReactor())
             .withTransport(nonFifoServerTransport)
             .withBufferSupplier(
                 new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(
@@ -130,13 +127,13 @@ public class MulticastSessionTest {
             .build();
 
     Transport clientTransport = memoryTransport.getClientTransport();
-    TransportDecorator nonFifoClientTransport = new TransportDecorator(clientTransport, false);
+    TransportDecorator nonFifoClientTransport = new TransportDecorator(clientTransport, false, true, false);
     TestReceiver clientReceiver = new TestReceiver();
 
     FixpSession consumerSession =
         FixpSession
             .builder()
-            .withReactor(reactor2)
+            .withReactor(engine2.getReactor())
             .withTransport(nonFifoClientTransport)
             .withBufferSupplier(
                 new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(
@@ -145,47 +142,44 @@ public class MulticastSessionTest {
             .withTopic(topic)
             .build();
 
-    consumerSession.open();
-    
-    try {
-      Thread.sleep(3000);
-    } catch (InterruptedException e) {
-    }
-    producerSession.open();
-
-    try {
-      Thread.sleep(3000);
-    } catch (InterruptedException e) {
-    }
- 
-    ByteBuffer buf = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
-    int bytesSent = 0;
-    for (int i = 0; i < messageCount; ++i) {
-      buf.clear();
-      encodeApplicationMessageWithFrame(buf, messages[i]);
-      bytesSent += buf.position();
-      producerSession.send(buf);
-    }
+    producerSession.open().get(1000, TimeUnit.MILLISECONDS);
+    consumerSession.open().get(1000, TimeUnit.MILLISECONDS);   
 
     try {
       Thread.sleep(1000);
     } catch (InterruptedException e) {
+      
+    }
+    
+    ByteBuffer buf = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
+    int bytesSent = 0;
+    for (int i = 0; i < messageCount; ++i) {
+      buf.clear();
+      bytesSent += encodeApplicationMessageWithFrame(buf, messages[i]);
+      producerSession.send(buf);
+    }
+
+    try {
+      Thread.sleep(2000);
+    } catch (InterruptedException e) {
 
     }
-    assertEquals(bytesSent, serverReceiver.getBytesReceived());
+    assertEquals(bytesSent, clientReceiver.getBytesReceived());
 
     consumerSession.close();
     producerSession.close();
    }
 
-  private void encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
+  private int encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
     frameEncoder.wrap(buf);
     frameEncoder.encodeFrameHeader();
     sbeEncoder.wrap(buf, frameEncoder.getHeaderLength()).setBlockLength(message.length).setTemplateId(templateId)
         .setSchemaId(schemaId).getSchemaVersion(schemaVersion);
     buf.put(message, 0, message.length);
-    frameEncoder.setMessageLength(message.length + SbeMessageHeaderDecoder.getLength());
+    final int lengthwithHeader = message.length + SbeMessageHeaderDecoder.getLength();
+    frameEncoder.setMessageLength(lengthwithHeader);
     frameEncoder.encodeFrameTrailer();
+    return lengthwithHeader;
   }
 
 }
