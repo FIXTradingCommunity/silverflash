@@ -23,6 +23,7 @@ import java.nio.ByteOrder;
 import org.fixtrading.silverflash.buffer.BufferArrays;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
 import org.fixtrading.silverflash.fixp.messages.MessageType;
+import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder.SequenceEncoder;
 
 /**
@@ -52,6 +53,7 @@ public class SimplexSequencer implements Sequencer, MutableSequence {
     this.nextSeqNo = nextSeqNo;
     sequenceEncoder =
         (SequenceEncoder) messageEncoder.wrap(sequenceBuffer, 0, MessageType.SEQUENCE);
+    sequenceEncoder.setNextSeqNo(nextSeqNo);
   }
 
   /*

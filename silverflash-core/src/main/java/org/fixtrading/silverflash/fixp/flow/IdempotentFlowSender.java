@@ -123,9 +123,13 @@ public class IdempotentFlowSender extends AbstractFlow implements FlowSender, Mu
   }
 
   public void sendHeartbeat() throws IOException {
-    if (isHeartbeatDue.getAndSet(true)) {
+    if (isHeartbeatDue()) {
       send(EMPTY);
     }
+  }
+
+  protected boolean isHeartbeatDue() {
+    return isHeartbeatDue.getAndSet(true);
   }
 
   /*
