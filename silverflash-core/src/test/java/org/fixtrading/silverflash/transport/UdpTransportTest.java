@@ -40,6 +40,7 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 
+//not reliable in build environment
 @Ignore
 public class UdpTransportTest {
 
