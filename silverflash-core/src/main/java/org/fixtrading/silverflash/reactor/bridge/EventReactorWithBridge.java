@@ -27,7 +27,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
-import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
@@ -119,7 +118,6 @@ public class EventReactorWithBridge extends EventReactor<ByteBuffer> {
   private final BufferSupplier buffers = new SingleBufferSupplier(ByteBuffer.allocateDirect(
       16 * 1024).order(ByteOrder.nativeOrder()));
 
-  private ExceptionConsumer exceptionConsumer = System.err::println;
   private final FrameSpliterator frameSpliter = new MessageLengthFrameSpliterator();
 
   private final Consumer<? super ByteBuffer> inboundReceiver = new Consumer<ByteBuffer>() {

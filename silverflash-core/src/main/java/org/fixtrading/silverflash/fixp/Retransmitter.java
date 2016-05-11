@@ -31,6 +31,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
+import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.Service;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
@@ -69,8 +70,7 @@ public class Retransmitter implements Service {
           try {
             resend(result, result.getFromSeqNo(), session);
           } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+            exceptionConsumer.accept(e);
           }
         } else {
           // session has gone away
@@ -127,6 +127,8 @@ public class Retransmitter implements Service {
   private final Sessions sessions;
   private final MessageStore store;
 
+  private final ExceptionConsumer exceptionConsumer;
+
   /**
    * Constructor
    * 
@@ -136,13 +138,15 @@ public class Retransmitter implements Service {
    *          a repository of messages
    * @param sessions
    *          a collection of open sessions
+   * @param exceptionConsumer 
    */
-  public Retransmitter(EventReactor<ByteBuffer> reactor, MessageStore store, Sessions sessions) {
+  public Retransmitter(EventReactor<ByteBuffer> reactor, MessageStore store, Sessions sessions, ExceptionConsumer exceptionConsumer) {
     Objects.requireNonNull(reactor);
     Objects.requireNonNull(store);
     this.reactor = reactor;
     this.store = store;
     this.sessions = sessions;
+    this.exceptionConsumer = exceptionConsumer;
   }
 
   /**

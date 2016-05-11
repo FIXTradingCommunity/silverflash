@@ -122,7 +122,7 @@ public class Engine implements AutoCloseable {
     return new Builder();
   }
 
-  private ReactiveAuthenticator<UUID, ByteBuffer> authenticator;
+  private final ReactiveAuthenticator<UUID, ByteBuffer> authenticator;
   private final EventReactor<ByteBuffer> eventReactor;
   private ExceptionConsumer exceptionConsumer = System.err::println;
   private final ExecutorService executor;
@@ -148,16 +148,15 @@ public class Engine implements AutoCloseable {
           new AffinityThreadFactory(builder.minCore, builder.maxCore, true, true, "SES");
     }
     this.executor = Executors.newFixedThreadPool(1, threadFactory);
-
-    this.iOReactor = new IOReactor(threadFactory);
-    this.store = builder.store;
-    this.authenticator = builder.authenticator;
     if (builder.exceptionHandler != null) {
       this.exceptionConsumer = builder.exceptionHandler;
     }
+    this.iOReactor = new IOReactor(threadFactory, exceptionConsumer);
+    this.store = builder.store;
+    this.authenticator = builder.authenticator;
     this.eventReactor =
         EventReactor.builder().withDispatcher(new ByteBufferDispatcher())
-            .withExceptionConsumer(exceptionConsumer).withExecutor(executor)
+            .withExceptionConsumer(exceptionConsumer).withThreadFactory(threadFactory)
             .withPayloadAllocator(new ByteBufferPayload(2048)).withRingSize(256).build();
   }
 
@@ -276,7 +275,8 @@ public class Engine implements AutoCloseable {
       this.store = new InMemoryMessageStore();
     }
     futureList.add(this.store.open());
-    this.retransmitter = new Retransmitter(getReactor(), store, sessions);
+    this.retransmitter = new Retransmitter(getReactor(), store, sessions,
+        exceptionConsumer);
     futureList.add(this.retransmitter.open());
 
     CompletableFuture<?>[] futures = new CompletableFuture<?>[futureList.size()];

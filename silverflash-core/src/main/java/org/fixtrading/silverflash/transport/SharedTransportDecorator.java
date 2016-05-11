@@ -201,7 +201,7 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
 
   protected ExceptionConsumer exceptionConsumer = System.err::println;
 
-  protected Consumer<T> newSessionConsumer;
+  protected final Consumer<T> newSessionConsumer;
 
   protected SharedTransportDecorator(Builder<T, ?, ?> builder) {
     Objects.requireNonNull(builder.transport);
@@ -212,7 +212,9 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
     this.buffers = builder.buffers;
     this.messageIdentifier = builder.messageIdentifier;
     this.newSessionConsumer = builder.newSessionConsumer;
-    this.exceptionConsumer = builder.exceptionHandler;
+    if (builder.exceptionHandler != null) {
+      this.exceptionConsumer = builder.exceptionHandler;
+    }
     if (builder.frameSpliter != null) {
       this.frameSpliter = builder.frameSpliter;
     }
@@ -301,7 +303,7 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
     if (consumer instanceof IdentifiableTransportConsumer<?>) {
       return open(buffers, (IdentifiableTransportConsumer<T>) consumer);
     } else {
-      CompletableFuture<Transport> future = new CompletableFuture<Transport>();
+      CompletableFuture<Transport> future = new CompletableFuture<>();
       future.completeExceptionally(new IllegalArgumentException("Not instancof IdentifiableTransportConsumer"));
       return future;
     }

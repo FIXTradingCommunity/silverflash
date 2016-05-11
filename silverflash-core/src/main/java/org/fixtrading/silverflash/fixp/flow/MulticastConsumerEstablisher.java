@@ -54,7 +54,7 @@ public class MulticastConsumerEstablisher implements Establisher, FlowReceiver, 
   private UUID sessionId;
   private byte [] topic;
   private final Transport transport;
-  private byte[] uuidAsBytes = new byte[16];
+  private final byte[] uuidAsBytes = new byte[16];
 
   /**
    * Constructor

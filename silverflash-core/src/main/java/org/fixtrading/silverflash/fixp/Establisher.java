@@ -17,6 +17,8 @@
 
 package org.fixtrading.silverflash.fixp;
 
+import java.io.IOException;
+
 import org.fixtrading.silverflash.fixp.messages.FlowType;
 
 /**
@@ -29,8 +31,10 @@ public interface Establisher {
 
   /**
    * A signal to this Establisher to complete its work
+   * @throws IOException if an IO error occurred while completing protocol
+   * establishment
    */
-  void complete();
+  void complete() throws IOException;
   
   /**
    * Transport layer established a connection

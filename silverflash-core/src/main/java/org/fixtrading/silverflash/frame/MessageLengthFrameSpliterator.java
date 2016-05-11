@@ -34,7 +34,7 @@ import java.util.function.Consumer;
 public class MessageLengthFrameSpliterator implements FrameSpliterator {
 
   private ByteBuffer buffer;
-  private MessageLengthFrameDecoder decoder = new MessageLengthFrameDecoder();
+  private final MessageLengthFrameDecoder decoder = new MessageLengthFrameDecoder();
   private int offset;
   private ByteOrder originalByteOrder;
 

@@ -32,6 +32,7 @@ import java.nio.ByteOrder;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.Service;
 import org.fixtrading.silverflash.fixp.FixpSession;
 import org.fixtrading.silverflash.fixp.Retransmitter;
@@ -84,7 +85,8 @@ public class RetransmitterTest {
     when(session.getSessionId()).thenReturn(uuid);
     sessions = new Sessions();
     sessions.addSession(session);
-    retransmitter = new Retransmitter(reactor, store, sessions);
+    ExceptionConsumer exceptionConsumer = System.err::println;
+    retransmitter = new Retransmitter(reactor, store, sessions, exceptionConsumer);
     CompletableFuture<Retransmitter> future3 = retransmitter.open();
 
     CompletableFuture.allOf(future1, future2, future3).get();

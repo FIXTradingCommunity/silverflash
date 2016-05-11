@@ -49,7 +49,7 @@ public class Sessions {
 
   private final Receiver newSessionHandler = new Receiver() {
     private final MessageDecoder messageDecoder = new MessageDecoder();
-    byte[] uuid = new byte[16];
+    final byte[] uuid = new byte[16];
 
     public void accept(ByteBuffer buffer) {
       Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());

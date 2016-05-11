@@ -31,6 +31,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
+import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.auth.Crypto;
 import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
@@ -169,14 +170,16 @@ public class TlsTcpTransportBenchmark {
     Crypto.addKeyCertificateEntry(ksTrust, "customer", "CN=Trader1, O=SomeFCM, C=US",
         storePassphrase);
 
-    serverIOReactor = new IOReactor(threadFactory);
+    ExceptionConsumer exceptionConsumer = System.err::println;
+
+    serverIOReactor = new IOReactor(threadFactory, exceptionConsumer);
     serverIOReactor.open().get();
     tcpAcceptor =
         createTcpAcceptor(serverIOReactor.getSelector(), serverAddress, ksKeys, ksTrust,
             storePassphrase, transportWrapper);
     tcpAcceptor.open().get();
 
-    clientIOReactor = new IOReactor(threadFactory);
+    clientIOReactor = new IOReactor(threadFactory, exceptionConsumer);
     clientIOReactor.open().get();
     clientBuffers =
         new SingleBufferSupplier(ByteBuffer.allocate(bufferSize * batchSize * 64).order(

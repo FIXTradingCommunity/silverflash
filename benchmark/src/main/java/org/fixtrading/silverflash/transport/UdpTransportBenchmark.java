@@ -24,12 +24,11 @@ import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.util.platform.AffinityThreadFactory;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.Param;
@@ -133,8 +132,6 @@ public class UdpTransportBenchmark {
   private UdpTransport serverTransport;
   private ByteBuffer[] srcs;
   private CountDownLatch startSignal;
-  private ExecutorService serverThreadPool;
-  private ExecutorService clientThreadPool;
 
   private UdpTransport createClientTransport(Dispatcher dispatcher, InetSocketAddress serverAddress,
       InetSocketAddress clientAddress) {
@@ -167,8 +164,6 @@ public class UdpTransportBenchmark {
     if (clientIOReactor != null) {
       clientIOReactor.close();
     }
-    clientThreadPool.shutdownNow();
-    serverThreadPool.shutdownNow();
   }
 
   @Setup
@@ -185,12 +180,13 @@ public class UdpTransportBenchmark {
 
     reflector = new Reflector();
 
-    serverThreadPool = Executors.newFixedThreadPool(1, threadFactory);
     BufferedTransportConsumer serverBuffers =
-        new BufferedTransportConsumer(serverThreadPool, reflector);
+        new BufferedTransportConsumer(threadFactory, reflector);
+
+    ExceptionConsumer exceptionConsumer = System.err::println;
 
     if (isDemultiplexed) {
-      serverIOReactor = new IOReactor(threadFactory);
+      serverIOReactor = new IOReactor(threadFactory, exceptionConsumer);
       serverIOReactor.open().get();
       serverTransport =
           createServerTransport(serverIOReactor.getSelector(), serverAddress, clientAddress);
@@ -205,13 +201,12 @@ public class UdpTransportBenchmark {
     }
 
     InjectorConsumer clientReceiver = new InjectorConsumer();
-    clientThreadPool = Executors.newFixedThreadPool(1, threadFactory);
     BufferedTransportConsumer clientBuffers =
-        new BufferedTransportConsumer(clientThreadPool, clientReceiver);
+        new BufferedTransportConsumer(threadFactory, clientReceiver);
 
     CompletableFuture<? extends Transport> future;
     if (isDemultiplexed) {
-      clientIOReactor = new IOReactor(threadFactory);
+      clientIOReactor = new IOReactor(threadFactory, exceptionConsumer);
       clientIOReactor.open().get();
       clientTransport =
           createClientTransport(clientIOReactor.getSelector(), serverAddress, clientAddress);

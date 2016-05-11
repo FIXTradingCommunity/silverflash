@@ -31,7 +31,7 @@ import org.fixtrading.silverflash.frame.FrameSpliterator;
 public class SofhFrameSpliterator implements FrameSpliterator {
 
   private ByteBuffer buffer;
-  private SofhFrameDecoder decoder = new SofhFrameDecoder();
+  private final SofhFrameDecoder decoder = new SofhFrameDecoder();
   private int offset;
   private ByteOrder originalByteOrder;
 

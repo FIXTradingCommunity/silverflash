@@ -329,12 +329,7 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
    * @see org.fixtrading.silverflash.fixp.Establisher#complete()
    */
   @Override
-  public void complete() {
-    try {
+  public void complete() throws IOException {
       establishmentAck(requestTimestamp, outboundKeepaliveInterval);
-    } catch (IOException e) {
-      // Apparently the client connection has gone away - nothing can be done until it reconnects
-      e.printStackTrace();
-    }
   }
 }

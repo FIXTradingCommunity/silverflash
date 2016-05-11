@@ -1,17 +1,15 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ * Copyright 2015 FIX Protocol Ltd
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations under
+ * the License.
  *
  */
 package org.fixtrading.silverflash.reactor;
@@ -19,16 +17,11 @@ package org.fixtrading.silverflash.reactor;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.Queue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.fixtrading.silverflash.Receiver;
-import org.fixtrading.silverflash.reactor.ByteBufferDispatcher;
-import org.fixtrading.silverflash.reactor.ByteBufferPayload;
-import org.fixtrading.silverflash.reactor.EventReactor;
-import org.fixtrading.silverflash.reactor.Topic;
-import org.fixtrading.silverflash.reactor.Topics;
+import org.fixtrading.silverflash.util.platform.AffinityThreadFactory;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
@@ -40,13 +33,11 @@ import org.openjdk.jmh.annotations.TearDown;
 @State(Scope.Benchmark)
 public class EventReactorBenchmark {
 
-  private static Queue<Integer> sessions = new ArrayDeque<>();
-
   @State(Scope.Thread)
   public static class Publisher {
 
-    private Integer myInstance;
     private int instance = 0;
+    private Integer myInstance;
 
     @Setup
     public void create() {
@@ -60,8 +51,8 @@ public class EventReactorBenchmark {
 
   class TestReceiver implements Receiver {
 
-    private ByteBuffer lastBuffer;
     private AtomicInteger count = new AtomicInteger();
+    private ByteBuffer lastBuffer;
 
     @Override
     public void accept(ByteBuffer buffer) {
@@ -73,21 +64,20 @@ public class EventReactorBenchmark {
       return count.get();
     }
 
-    public void setCount(int count) {
-      this.count.set(count);
-    }
-
     public ByteBuffer getLastBuffer() {
       return lastBuffer;
     }
 
+    public void setCount(int count) {
+      this.count.set(count);
+    }
+
   }
 
-  private Topic[] topics;
-  private TestReceiver[] receivers;
+  private static Queue<Integer> sessions = new ArrayDeque<>();
 
-  @Param({"16", "256"})
-  public int numberOfTopics;
+  private int messageLength = 1024;
+  private ByteBuffer[] messages;
 
   @Param({"1", "2"})
   public int numberOfDispatchers;
@@ -95,28 +85,29 @@ public class EventReactorBenchmark {
   @Param({"1", "2"})
   public int numberOfPublishers;
 
-  @Param({"128", "256", "1024"})
-  public int ringSize;
+  @Param({"16", "256"})
+  public int numberOfTopics;
 
   private EventReactor<ByteBuffer> reactor;
-  private ByteBuffer[] messages;
-  private int messageLength = 1024;
-  private ExecutorService executor;
+
+  private TestReceiver[] receivers;
+  @Param({"128", "256", "1024"})
+  public int ringSize;
+  private final ThreadFactory threadFactory = new AffinityThreadFactory(true, true, "benchmark");
+  private Topic[] topics;
+
 
   @TearDown
   public void detroyTestEnvironment() {
     reactor.close();
-    executor.shutdown();
   }
 
   @SuppressWarnings("unchecked")
   @Setup
   public void initTestEnvironment() throws Exception {
-    executor = Executors.newFixedThreadPool(numberOfDispatchers);
-    reactor =
-        EventReactor.builder().withRingSize(ringSize).withExecutor(executor)
-            .withDispatcher(new ByteBufferDispatcher())
-            .withPayloadAllocator(new ByteBufferPayload(2048)).build();
+    reactor = EventReactor.builder().withRingSize(ringSize).withThreadFactory(threadFactory)
+        .withDispatcher(new ByteBufferDispatcher())
+        .withPayloadAllocator(new ByteBufferPayload(2048)).build();
     reactor.open().get();
 
     topics = new Topic[numberOfTopics];

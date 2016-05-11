@@ -48,7 +48,7 @@ class TcpClientTransport extends AbstractTcpChannel {
     this.buffers = buffers;
     this.consumer = consumer;
 
-    CompletableFuture<TcpClientTransport> future = new CompletableFuture<TcpClientTransport>();
+    CompletableFuture<TcpClientTransport> future = new CompletableFuture<>();
 
     try {
       configureChannel();

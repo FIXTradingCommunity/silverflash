@@ -29,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
+import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
 import org.fixtrading.silverflash.util.platform.AffinityThreadFactory;
@@ -154,13 +155,15 @@ public class TcpTransportBenchmark {
 
     threadFactory = new AffinityThreadFactory(true, true, "benchmark");
 
-    serverIOReactor = new IOReactor(threadFactory);
+    ExceptionConsumer exceptionConsumer = System.err::println;
+
+    serverIOReactor = new IOReactor(threadFactory, exceptionConsumer);
     serverIOReactor.open().get();
     tcpAcceptor = createTcpAcceptor(serverIOReactor.getSelector(), serverAddress, transportWrapper);
     tcpAcceptor.open().get();
 
     if (isDemultiplexed) {
-      clientIOReactor = new IOReactor(threadFactory);
+      clientIOReactor = new IOReactor(threadFactory, exceptionConsumer);
       clientIOReactor.open().get();
       clientTransport = createClientTcpTransport(clientIOReactor.getSelector(), serverAddress);
     } else {

@@ -19,7 +19,7 @@ package org.fixtrading.silverflash.buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.fixtrading.silverflash.Receiver;
@@ -59,9 +59,8 @@ public class RingBufferSupplier implements BufferSupplier, Service {
     }
   }
 
-  private Receiver consumer;
+  private final Receiver consumer;
   private Disruptor<BufferEvent> disruptor;
-  private final Executor executor;
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private RingBuffer<BufferEvent> ringBuffer;
   private final int ringSize = 256;
@@ -72,14 +71,15 @@ public class RingBufferSupplier implements BufferSupplier, Service {
       return 0L;
     }
   };
+  private final ThreadFactory threadFactory;
 
   /**
    * Constructor
    * @param executor supplies threads to consume the ring buffer
    * @param consumer receives buffered messages
    */
-  public RingBufferSupplier(Executor executor, Receiver consumer) {
-    this.executor = executor;
+  public RingBufferSupplier(ThreadFactory threadFactory, Receiver consumer) {
+    this.threadFactory = threadFactory;
     this.consumer = consumer;
   }
 
@@ -132,7 +132,7 @@ public class RingBufferSupplier implements BufferSupplier, Service {
   @Override
   public CompletableFuture<? extends Service> open() {
     if (isRunning.compareAndSet(false, true)) {
-      this.disruptor = new Disruptor<>(BufferEvent.EVENT_FACTORY, ringSize, executor,
+      this.disruptor = new Disruptor<>(BufferEvent.EVENT_FACTORY, ringSize, threadFactory,
           ProducerType.SINGLE, new BusySpinWaitStrategy());
       this.disruptor.handleEventsWith(this::onEvent);
       this.ringBuffer = disruptor.start();

@@ -56,9 +56,7 @@ import org.fixtrading.silverflash.transport.Transport;
  *
  */
 public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiver, FlowSender {
-  /**
-	 * 
-	 */
+
   public static final int DEFAULT_OUTBOUND_KEEPALIVE_INTERVAL = 5000;
   private byte[] credentials;
   private FlowType inboundFlow;

@@ -64,7 +64,7 @@ public class RecoverableFlowSender extends AbstractFlow
       this.store = store;
       return (B) this;
     }
-  };
+  }
 
   @SuppressWarnings("rawtypes")
   public static Builder builder() {

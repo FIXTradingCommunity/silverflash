@@ -23,7 +23,6 @@ import java.nio.ByteOrder;
 import org.fixtrading.silverflash.buffer.BufferArrays;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
 import org.fixtrading.silverflash.fixp.messages.MessageType;
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder.SequenceEncoder;
 
 /**

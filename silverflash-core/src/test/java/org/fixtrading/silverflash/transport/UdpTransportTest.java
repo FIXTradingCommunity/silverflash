@@ -116,7 +116,7 @@ public class UdpTransportTest {
 
     final TestReceiver serverReceiver = new TestReceiver();
     serverTransport = new UdpTransport(iOReactor.getSelector(), serverAddress, clientAddress);
-    BufferedTransportConsumer serverBuffers = new BufferedTransportConsumer(Executors.newFixedThreadPool(1), serverReceiver);
+    BufferedTransportConsumer serverBuffers = new BufferedTransportConsumer(Executors.defaultThreadFactory(), serverReceiver);
     serverTransport.open(
         serverBuffers,
         serverBuffers);
@@ -141,7 +141,7 @@ public class UdpTransportTest {
       }
     };
 
-    BufferedTransportConsumer clientBuffers = new BufferedTransportConsumer(Executors.newFixedThreadPool(1), clientReceiver);
+    BufferedTransportConsumer clientBuffers = new BufferedTransportConsumer(Executors.defaultThreadFactory(), clientReceiver);
    
     clientTransport.open(
         clientBuffers,
@@ -177,7 +177,7 @@ public class UdpTransportTest {
  
     final TestReceiver serverReceiver = new TestReceiver(); 
     serverTransport = new UdpMulticastTransport(iOReactor.getSelector(), multicastAddress, port, networkInterface);
-    BufferedTransportConsumer serverBuffers = new BufferedTransportConsumer(Executors.newFixedThreadPool(1), serverReceiver);
+    BufferedTransportConsumer serverBuffers = new BufferedTransportConsumer(Executors.defaultThreadFactory(), serverReceiver);
     serverTransport.open(
         serverBuffers,
         serverBuffers);
@@ -202,7 +202,7 @@ public class UdpTransportTest {
       }
     };
 
-    BufferedTransportConsumer clientBuffers = new BufferedTransportConsumer(Executors.newFixedThreadPool(1), clientReceiver);
+    BufferedTransportConsumer clientBuffers = new BufferedTransportConsumer(Executors.defaultThreadFactory(), clientReceiver);
    
     clientTransport.open(
         clientBuffers,

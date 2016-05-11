@@ -20,10 +20,10 @@ import java.nio.ByteBuffer;
 import java.util.Objects;
 import java.util.UUID;
 
+import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.fixp.SessionId;
-import org.fixtrading.silverflash.fixp.flow.AbstractFlow.Builder;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.transport.Transport;
@@ -43,6 +43,7 @@ class AbstractReceiverFlow {
     private Transport transport;
     private MessageConsumer<UUID> messageConsumer;
     private Session<UUID> session;
+    private ExceptionConsumer exceptionHandler;
 
       public abstract T build();
 
@@ -91,6 +92,10 @@ class AbstractReceiverFlow {
       return (B) this;
     }
 
+    public B withExceptionConsumer(ExceptionConsumer exceptionHandler) {
+      this.exceptionHandler = exceptionHandler;
+      return (B) this;
+    }
   }
 
   protected final MessageEncoder messageEncoder;
@@ -102,6 +107,7 @@ class AbstractReceiverFlow {
   protected final byte[] uuidAsBytes;
   protected final MessageConsumer<UUID> messageConsumer;
   protected final Session<UUID> session;
+  protected final ExceptionConsumer exceptionConsumer;
 
   protected AbstractReceiverFlow(Builder<?, ?> builder) {
     Objects.requireNonNull(builder.reactor);
@@ -116,6 +122,7 @@ class AbstractReceiverFlow {
     this.session = builder.session;
     this.sessionId = session.getSessionId();
     this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
+    this.exceptionConsumer = builder.exceptionHandler;
   }
 
 }

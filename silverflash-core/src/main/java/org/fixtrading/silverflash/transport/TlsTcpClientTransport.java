@@ -49,7 +49,7 @@ class TlsTcpClientTransport extends AbstractTlsChannel {
     this.buffers = buffers;
     this.consumer = consumer;
 
-    CompletableFuture<TlsTcpClientTransport> future = new CompletableFuture<TlsTcpClientTransport>();
+    CompletableFuture<TlsTcpClientTransport> future = new CompletableFuture<>();
 
     SSLSession session = engine.getSession();
     peerNetData = ByteBuffer.allocateDirect(session.getPacketBufferSize())

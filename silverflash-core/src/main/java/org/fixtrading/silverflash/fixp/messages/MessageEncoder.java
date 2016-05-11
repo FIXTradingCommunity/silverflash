@@ -673,7 +673,7 @@ public class MessageEncoder {
     }
   };
 
-  private Class<? extends MessageFrameEncoder> messageFrameEncoderClass;
+  private final Class<? extends MessageFrameEncoder> messageFrameEncoderClass;
 
   private final ThreadLocal<NegotiateEncoder> negotiateEncoder = new ThreadLocal<NegotiateEncoder>() {
     @Override

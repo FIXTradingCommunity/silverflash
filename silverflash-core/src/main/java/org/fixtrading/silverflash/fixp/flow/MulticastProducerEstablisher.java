@@ -53,7 +53,7 @@ public class MulticastProducerEstablisher implements Sender, Establisher, FlowRe
   private final EventReactor<ByteBuffer> reactor;
   private final ByteBuffer sessionMessageBuffer = ByteBuffer.allocateDirect(128).order(
       ByteOrder.nativeOrder());
-  private Topic terminatedTopic;
+  private final Topic terminatedTopic;
   private final Transport transport;
   private byte[] uuidAsBytes = new byte[16];
   private final String topic;

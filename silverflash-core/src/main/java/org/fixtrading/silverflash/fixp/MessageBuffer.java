@@ -20,7 +20,7 @@ package org.fixtrading.silverflash.fixp;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.UUID;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.fixtrading.silverflash.MessageConsumer;
@@ -81,18 +81,18 @@ public class MessageBuffer implements MessageConsumer<UUID> {
   }
 
   private Disruptor<BufferEvent> disruptor;
-  private final Executor executor;
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private final MessageConsumer<UUID> receiver;
   private RingBuffer<BufferEvent> ringBuffer;
   private final int ringSize = 256;
+  private final ThreadFactory threadFactory;
 
   /**
-   * @param executor executes events
+   * @param threadFactory executes events
    * @param receiver receives messages asynchronously
    */
-  public MessageBuffer(Executor executor, MessageConsumer<UUID> receiver) {
-    this.executor = executor;
+  public MessageBuffer(ThreadFactory threadFactory, MessageConsumer<UUID> receiver) {
+    this.threadFactory = threadFactory;
     this.receiver = receiver;
   }
 
@@ -111,7 +111,7 @@ public class MessageBuffer implements MessageConsumer<UUID> {
   public void start() {
     if (isRunning.compareAndSet(false, true)) {
       this.disruptor =
-          new Disruptor<>(BufferEvent.EVENT_FACTORY, ringSize, executor, ProducerType.SINGLE,
+          new Disruptor<>(BufferEvent.EVENT_FACTORY, ringSize, threadFactory, ProducerType.SINGLE,
               new BusySpinWaitStrategy());
       this.disruptor.handleEventsWith(this::handleEvent);
       this.ringBuffer = disruptor.start();

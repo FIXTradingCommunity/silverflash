@@ -93,7 +93,7 @@ public class UdpMulticastTransport extends AbstractUdpTransport {
     this.buffers = buffers;
     this.consumer = consumer;
 
-    CompletableFuture<UdpMulticastTransport> future = new CompletableFuture<UdpMulticastTransport>();
+    CompletableFuture<UdpMulticastTransport> future = new CompletableFuture<>();
     try {
 
       this.socketChannel = DatagramChannel.open(StandardProtocolFamily.INET);

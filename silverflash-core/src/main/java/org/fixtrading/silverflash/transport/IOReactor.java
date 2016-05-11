@@ -29,6 +29,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.Service;
 
 /**
@@ -43,14 +44,15 @@ public class IOReactor implements Runnable, Service {
   private Selector selector;
   private final ThreadFactory threadFactory;
   private CompletableFuture<IOReactor> future;
-
+  private ExceptionConsumer exceptionConsumer = System.err::println;
 
   public IOReactor() {
     this.threadFactory = Executors.defaultThreadFactory();
   }
 
-  public IOReactor(ThreadFactory threadFactory) {
+  public IOReactor(ThreadFactory threadFactory, ExceptionConsumer exceptionConsumer) {
     this.threadFactory = threadFactory;
+    this.exceptionConsumer = exceptionConsumer;
   }
 
   public void close() {
@@ -121,12 +123,12 @@ public class IOReactor implements Runnable, Service {
 
       selector.close();
     } catch (ClosedSelectorException e) {
-      System.err.println("Selector closed unexpectedly; stopping IOReactor");
+      exceptionConsumer.accept(e);
       running.set(false);
     } catch (CancelledKeyException | ClosedChannelException e) {
       System.out.println("Transport closed");
     } catch (Exception e) {
-      e.printStackTrace();
+      exceptionConsumer.accept(e);
     } finally {
       running.set(false);
       selector = null;

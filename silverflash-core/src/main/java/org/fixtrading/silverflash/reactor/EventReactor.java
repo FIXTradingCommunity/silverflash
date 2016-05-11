@@ -26,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.fixtrading.silverflash.ExceptionConsumer;
@@ -54,6 +55,35 @@ import com.lmax.disruptor.dsl.ProducerType;
  */
 public class EventReactor<T> implements Service {
 
+  private class BufferEvent {
+
+    private final T payload;
+    private Topic topic;
+
+    BufferEvent() {
+      payload = payloadAllocator.allocatePayload();
+    }
+
+    T getPayload() {
+      return payload;
+    }
+
+    Topic getTopic() {
+      return topic;
+    }
+
+    void set(Topic topic, T src) {
+      this.topic = topic;
+      payloadAllocator.setPayload(src, payload);
+    }
+
+    @Override
+    public String toString() {
+      return "BufferEvent [topic=" + topic + ", payload=" + payload + "]";
+    }
+
+  }
+
   /**
    * Collects attributes to build an EventReactor
    * 
@@ -67,9 +97,9 @@ public class EventReactor<T> implements Service {
 
     private Dispatcher<T> dispatcher;
     private ExceptionConsumer exceptionHandler = System.err::println;
-    private Executor executor;
     private PayloadAllocator<T> payloadAllocator;
     private int ringSize = 128;
+    private ThreadFactory threadFactory;
 
 
     /**
@@ -104,18 +134,6 @@ public class EventReactor<T> implements Service {
     }
 
     /**
-     * Adds a task runner
-     * 
-     * @param executor task runner
-     * @return this Builder
-     */
-    public B withExecutor(Executor executor) {
-      this.executor = executor;
-      return (B) this;
-    }
-
-
-    /**
      * Adds an allocator for the event payload-
      * 
      * @param payloadAllocator allocates payload for an event
@@ -125,6 +143,7 @@ public class EventReactor<T> implements Service {
       this.payloadAllocator = payloadAllocator;
       return (B) this;
     }
+
 
     /**
      * Sets the size of a ring buffer of events
@@ -136,35 +155,17 @@ public class EventReactor<T> implements Service {
       this.ringSize = ringSize;
       return (B) this;
     }
-  }
 
-  private class BufferEvent {
-
-    private final T payload;
-    private Topic topic;
-
-    BufferEvent() {
-      payload = payloadAllocator.allocatePayload();
+    /**
+     * Adds a task runner
+     * 
+     * @param threadFactory task runner
+     * @return this Builder
+     */
+    public B withThreadFactory(ThreadFactory threadFactory) {
+      this.threadFactory = threadFactory;
+      return (B) this;
     }
-
-    @Override
-    public String toString() {
-      return "BufferEvent [topic=" + topic + ", payload=" + payload + "]";
-    }
-
-    T getPayload() {
-      return payload;
-    }
-
-    Topic getTopic() {
-      return topic;
-    }
-
-    void set(Topic topic, T src) {
-      this.topic = topic;
-      payloadAllocator.setPayload(src, payload);
-    }
-
   }
 
   private class TimedPostTask extends TimerTask {
@@ -192,17 +193,17 @@ public class EventReactor<T> implements Service {
 
   private final Dispatcher<T> dispatcher;
   private Disruptor<BufferEvent> disruptor;
-  private final ExceptionConsumer exceptionConsumer;
-  private final Executor executor;
+  final EventFactory<BufferEvent> EVENT_FACTORY = BufferEvent::new;
+  protected final ExceptionConsumer exceptionConsumer;
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private String name = "default";
   private final PayloadAllocator<T> payloadAllocator;
   private final ConcurrentHashMap<Topic, Receiver> registry = new ConcurrentHashMap<>();
   private RingBuffer<BufferEvent> ringBuffer;
   private final int ringSize;
+  private final ThreadFactory threadFactory;
   private Timer timer;
   private boolean trace = false;
-  final EventFactory<BufferEvent> EVENT_FACTORY = BufferEvent::new;
 
   protected EventReactor(Builder<T, ?, ?> builder) {
     Objects.requireNonNull(builder.payloadAllocator);
@@ -212,10 +213,10 @@ public class EventReactor<T> implements Service {
     this.payloadAllocator = builder.payloadAllocator;
     this.dispatcher = builder.dispatcher;
     this.exceptionConsumer = builder.exceptionHandler;
-    if (builder.executor != null) {
-      this.executor = builder.executor;
+    if (builder.threadFactory != null) {
+      this.threadFactory = builder.threadFactory;
     } else {
-      this.executor = Executors.newFixedThreadPool(1);
+      this.threadFactory = Executors.defaultThreadFactory();
     }
   }
 
@@ -227,6 +228,27 @@ public class EventReactor<T> implements Service {
       this.timer.cancel();
       this.disruptor.halt();
       registry.clear();
+    }
+  }
+
+  private Receiver getSubscriber(Topic topic) {
+    return registry.get(topic);
+  }
+
+  private void handleEvent(BufferEvent event, long sequence, boolean endOfBatch) {
+    Topic topic = event.getTopic();
+    Receiver receiver = getSubscriber(topic);
+    if (receiver != null) {
+      if (trace) {
+        System.out.format("Dispatch [%s] %s\n", name, topic);
+      }
+      try {
+        dispatcher.dispatch(event.getTopic(), event.getPayload(), receiver);
+      } catch (IOException e) {
+        exceptionConsumer.accept(e);
+      }
+    } else if (trace) {
+      System.out.format("Dispatch failed [%s] %s; no subscriber\n", name, topic);
     }
   }
 
@@ -250,7 +272,7 @@ public class EventReactor<T> implements Service {
     if (isRunning.compareAndSet(false, true)) {
       CompletableFuture<EventReactor<T>> future = new CompletableFuture<>();
       this.disruptor =
-          new Disruptor<>(EVENT_FACTORY, ringSize, executor, ProducerType.MULTI,
+          new Disruptor<>(EVENT_FACTORY, ringSize, threadFactory, ProducerType.MULTI,
               new BusySpinWaitStrategy());
       this.disruptor.handleEventsWith(this::handleEvent);
       this.ringBuffer = disruptor.start();
@@ -375,26 +397,5 @@ public class EventReactor<T> implements Service {
       System.out.format("Unsubscribe [%s] %s\n", name, topic);
     }
     registry.remove(topic);
-  }
-
-  private Receiver getSubscriber(Topic topic) {
-    return registry.get(topic);
-  }
-
-  private void handleEvent(BufferEvent event, long sequence, boolean endOfBatch) {
-    Topic topic = event.getTopic();
-    Receiver receiver = getSubscriber(topic);
-    if (receiver != null) {
-      if (trace) {
-        System.out.format("Dispatch [%s] %s\n", name, topic);
-      }
-      try {
-        dispatcher.dispatch(event.getTopic(), event.getPayload(), receiver);
-      } catch (IOException e) {
-        exceptionConsumer.accept(e);
-      }
-    } else if (trace) {
-      System.out.format("Dispatch failed [%s] %s; no subscriber\n", name, topic);
-    }
   }
 }

@@ -49,7 +49,7 @@ public class PipeTransport {
         TransportConsumer consumer) {
       Objects.requireNonNull(buffers);
       Objects.requireNonNull(consumer);
-      CompletableFuture<Transport> future = new CompletableFuture<Transport>();
+      CompletableFuture<Transport> future = new CompletableFuture<>();
 
       this.buffers = buffers;
       this.consumer = consumer;

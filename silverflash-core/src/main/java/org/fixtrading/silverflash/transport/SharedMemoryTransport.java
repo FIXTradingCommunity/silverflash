@@ -427,7 +427,7 @@ public class SharedMemoryTransport implements Transport {
 
   public CompletableFuture<SharedMemoryTransport> open(BufferSupplier buffers,
       TransportConsumer consumer) {
-    CompletableFuture<SharedMemoryTransport> future = new CompletableFuture<SharedMemoryTransport>();
+    CompletableFuture<SharedMemoryTransport> future = new CompletableFuture<>();
 
     if (isOpen.compareAndSet(false, true)) {
       Objects.requireNonNull(buffers);

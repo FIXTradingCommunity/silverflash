@@ -19,6 +19,7 @@ package org.fixtrading.silverflash.fixp.flow;
 import java.nio.ByteBuffer;
 import java.util.UUID;
 
+import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.transport.Transport;
@@ -43,6 +44,15 @@ public interface FlowBuilder<T, B extends FlowBuilder<T, B>> {
   B withSequencer(Sequencer sequencer);
 
   B withSessionId(UUID sessionId);
+  
+  /**
+   * Adds an exception handler
+   * 
+   * @param exceptionHandler
+   *          a handler for exceptions thrown from an inner context
+   * @return this Builder
+   */
+  B withExceptionConsumer(ExceptionConsumer exceptionHandler);
 
   B withTransport(Transport transport);
 

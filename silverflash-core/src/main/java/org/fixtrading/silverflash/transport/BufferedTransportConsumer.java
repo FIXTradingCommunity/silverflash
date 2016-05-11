@@ -19,7 +19,7 @@ package org.fixtrading.silverflash.transport;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.fixtrading.silverflash.Service;
@@ -82,13 +82,14 @@ public class BufferedTransportConsumer implements BufferSupplier, Service, Trans
     CONNECTED, DATA, DISCONNECTED
   }
 
-  private TransportConsumer consumer;
+  private final TransportConsumer consumer;
   private Disruptor<BufferEvent> disruptor;
-  private final Executor executor;
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private RingBuffer<BufferEvent> ringBuffer;
   private final int ringSize = 256;
 
+  private final ThreadFactory threadFactory;
+  
   private final ThreadLocal<Long> uncommitted = new ThreadLocal<Long>() {
     @Override
     protected Long initialValue() {
@@ -98,11 +99,11 @@ public class BufferedTransportConsumer implements BufferSupplier, Service, Trans
 
   /**
    * Constructor
-   * @param executor supplies threads to consume the buffer
+   * @param threadFactory supplies threads to consume the buffer
    * @param consumer a consumer of messages
    */
-  public BufferedTransportConsumer(Executor executor, TransportConsumer consumer) {
-    this.executor = executor;
+  public BufferedTransportConsumer(ThreadFactory threadFactory, TransportConsumer consumer) {
+    this.threadFactory = threadFactory;
     this.consumer = consumer;
   }
 
@@ -207,7 +208,7 @@ public class BufferedTransportConsumer implements BufferSupplier, Service, Trans
   @Override
   public CompletableFuture<? extends Service> open() {
     if (isRunning.compareAndSet(false, true)) {
-      this.disruptor = new Disruptor<>(BufferEvent.EVENT_FACTORY, ringSize, executor,
+      this.disruptor = new Disruptor<>(BufferEvent.EVENT_FACTORY, ringSize, threadFactory,
           ProducerType.SINGLE, new BusySpinWaitStrategy());
       this.disruptor.handleEventsWith(this::onEvent);
       this.ringBuffer = disruptor.start();

@@ -86,7 +86,7 @@ public class UdpTransport extends AbstractUdpTransport  {
     this.buffers = buffers;
     this.consumer = consumer;
 
-    CompletableFuture<UdpTransport> future = new CompletableFuture<UdpTransport>();
+    CompletableFuture<UdpTransport> future = new CompletableFuture<>();
 
     try {
       this.socketChannel = DatagramChannel.open();
