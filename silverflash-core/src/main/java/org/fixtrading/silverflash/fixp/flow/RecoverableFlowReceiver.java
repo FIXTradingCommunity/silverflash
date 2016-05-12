@@ -22,6 +22,7 @@ import static org.fixtrading.silverflash.fixp.SessionEventTopics.ServiceEventTyp
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.PEER_HEARTBEAT;
 import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventType.PEER_TERMINATED;
 
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
@@ -133,8 +134,11 @@ public class RecoverableFlowReceiver extends AbstractReceiverFlow
         isApplicationMessage = false;
         break;
       default:
-        System.out.println("RecoverableFlowReceiver: Protocol violation; unexpected session message "
-            + decoder.getMessageType());
+//          System.out
+//              .println("RecoverableFlowReceiver: Protocol violation; unexpected session message "
+//                  + decoder.getMessageType());
+        buffer.reset();
+        reactor.post(terminatedTopic, buffer);
       }
     }
     if (isApplicationMessage && !isEndOfStream) {
@@ -164,7 +168,10 @@ public class RecoverableFlowReceiver extends AbstractReceiverFlow
       lastRetransSeqNoToAccept = retransSeqNo + count;
       isRetransmission.set(true);
     } else {
-      System.err.println("Protocol violation; unsolicited retransmission");
+      ByteBuffer buffer = decoder.getBuffer();
+      // System.err.println("Protocol violation; unsolicited retransmission");
+      buffer .reset();
+      reactor.post(terminatedTopic, buffer);
     }
   }
 

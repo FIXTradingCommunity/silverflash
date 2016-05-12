@@ -254,11 +254,11 @@ public class Engine implements AutoCloseable {
     if (isOpen.compareAndSet(false, true)) {
       CompletableFuture<? extends EventReactor<ByteBuffer>> future = eventReactor.open();
       future.get();
-      startServices();
+      startServices().get();
     }
   }
 
-  private void startServices() {
+  private CompletableFuture<Void> startServices() {
     // todo: consider a dependency injection framework
 
     ArrayList<CompletableFuture<?>> futureList = new ArrayList<>();
@@ -280,7 +280,7 @@ public class Engine implements AutoCloseable {
     futureList.add(this.retransmitter.open());
 
     CompletableFuture<?>[] futures = new CompletableFuture<?>[futureList.size()];
-    CompletableFuture.allOf(futureList.toArray(futures));
+    return CompletableFuture.allOf(futureList.toArray(futures));
   }
 
   private void stopServices() throws Exception {

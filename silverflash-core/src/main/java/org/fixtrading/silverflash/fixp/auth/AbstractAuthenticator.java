@@ -75,22 +75,20 @@ abstract class AbstractAuthenticator implements ReactiveAuthenticator<UUID, Byte
 
   public void close() {
     reactor.unsubscribe(authenticateTopic);
-    System.out.println("Authenticator closed");
   }
 
   public CompletableFuture<? extends AbstractAuthenticator> open() {
     authenticateTopic = SessionEventTopics.getTopic(SERVICE_AUTHENTICATE);
     serviceAuthenticateSubscription = reactor.subscribe(authenticateTopic, authenticateHandler);
-    if (serviceAuthenticateSubscription != null) {
-      System.out.println("Authenticator open");
-    } else {
+    if (serviceAuthenticateSubscription == null) {
       CompletableFuture<AbstractAuthenticator> future = new CompletableFuture<>();
       future.completeExceptionally(new RuntimeException(
           "Failed to open Authenticator; subscription failed for topic "
               + authenticateTopic.toString()));
       return future;
+    } else {
+      return CompletableFuture.completedFuture(this);
     }
-    return CompletableFuture.completedFuture(this);
   }
 
   public ReactiveAuthenticator<UUID, ByteBuffer> withEventReactor(EventReactor<ByteBuffer> reactor) {

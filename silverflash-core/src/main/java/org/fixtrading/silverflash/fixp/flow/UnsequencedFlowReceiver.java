@@ -95,9 +95,10 @@ public class UnsequencedFlowReceiver extends AbstractReceiverFlow implements Flo
         isApplicationMessage = false;
         break;
       default:
-        // Todo: post to an async handler
-        System.out.println("UnsequencedFlowReceiver: Protocol violation; unexpected session message "
-            + decoder.getMessageType());
+//        System.out.println("UnsequencedFlowReceiver: Protocol violation; unexpected session message "
+//            + decoder.getMessageType());
+        buffer.reset();
+        reactor.post(terminatedTopic, buffer);
       }
     }
     if (isApplicationMessage && !isEndOfStream) {

@@ -111,13 +111,17 @@ public class ClientSessionEstablisher implements Sender, Establisher, FlowReceiv
           onEstablishmentReject((EstablishmentRejectDecoder) decoder);
           break;
         default:
-          System.out
-              .println("ClientSessionEstablisher: Protocol violation; unexpected session message "
-                  + decoder.getMessageType());
+//          System.out
+//              .println("ClientSessionEstablisher: Protocol violation; unexpected session message "
+//                  + decoder.getMessageType());
+          buffer.reset();
+          reactor.post(terminatedTopic, buffer);
         }
       } else {
         // Shouldn't get application message before handshake is done
-        System.out.println("Protocol violation");
+        // System.out.println("Protocol violation");
+        buffer.reset();
+        reactor.post(terminatedTopic, buffer);
       }
     } catch (IOException ex) {
 

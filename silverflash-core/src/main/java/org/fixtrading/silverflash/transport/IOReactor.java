@@ -1,25 +1,21 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ * Copyright 2015 FIX Protocol Ltd
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations under
+ * the License.
  *
  */
 
 package org.fixtrading.silverflash.transport;
 
 import java.io.IOException;
-import java.nio.channels.CancelledKeyException;
-import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -91,9 +87,8 @@ public class IOReactor implements Runnable, Service {
       future.completeExceptionally(ex);
     }
 
-    try {
-      System.out.println("IOReactor started");
-      while (running.compareAndSet(true, true)) {
+    while (running.compareAndSet(true, true)) {
+      try {
         int numberUpdated = selector.selectNow();
         Iterator<SelectionKey> iter = selector.selectedKeys().iterator();
 
@@ -119,21 +114,23 @@ public class IOReactor implements Runnable, Service {
             }
           }
         }
+      } catch (ClosedSelectorException e) {
+        exceptionConsumer.accept(e);
+        running.set(false);
+      } catch (IOException e) {
+        exceptionConsumer.accept(e);
+      } catch (Exception e) {
+        exceptionConsumer.accept(e);
+        running.set(false);
       }
-
-      selector.close();
-    } catch (ClosedSelectorException e) {
-      exceptionConsumer.accept(e);
-      running.set(false);
-    } catch (CancelledKeyException | ClosedChannelException e) {
-      System.out.println("Transport closed");
-    } catch (Exception e) {
-      exceptionConsumer.accept(e);
-    } finally {
-      running.set(false);
-      selector = null;
-      System.out.println("IOReactor closed");
     }
+    
+    try {
+      selector.close();
+    } catch (IOException e) {
+      exceptionConsumer.accept(e);
+    }
+    selector = null;
   }
 
 }

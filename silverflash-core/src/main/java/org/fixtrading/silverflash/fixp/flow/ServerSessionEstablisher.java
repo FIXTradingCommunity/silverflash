@@ -111,9 +111,13 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
           onEstablish((EstablishDecoder) decoder);
           break;
         default:
-          System.out
-              .println("ServerSessionEstablisher: Protocol violation; unexpected session message "
-                  + decoder.getMessageType());
+//          System.out
+//              .println("ServerSessionEstablisher: Protocol violation; unexpected session message "
+//                  + decoder.getMessageType());
+          if (terminatedTopic != null) {
+            buffer.reset();
+            reactor.post(terminatedTopic, buffer);
+          }
         }
       } else {
         // Shouldn't get application message before handshake is done
@@ -269,7 +273,11 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
       Topic readyTopic = SessionEventTopics.getTopic(sessionId, SERVER_ESTABLISHED);
       reactor.post(readyTopic, sessionMessageBuffer);
     } else {
-      System.out.println("Unexpected establish received");
+      // System.out.println("Unexpected establish received");
+      ByteBuffer buffer = establishDecoder.getBuffer();
+      buffer.reset();
+      reactor.post(terminatedTopic, buffer);
+
     }
   }
 

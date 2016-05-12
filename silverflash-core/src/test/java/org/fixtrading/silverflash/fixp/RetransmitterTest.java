@@ -75,7 +75,7 @@ public class RetransmitterTest {
         EventReactor.builder().withDispatcher(new ByteBufferDispatcher())
             .withPayloadAllocator(new ByteBufferPayload(2048)).build();
 
-    reactor.setTrace(true);
+    // reactor.setTrace(true);
     CompletableFuture<? extends EventReactor<ByteBuffer>> future1 = reactor.open();
 
     store = new InMemoryMessageStore();

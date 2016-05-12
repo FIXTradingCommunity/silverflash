@@ -154,7 +154,7 @@ public class FixpSharedTransportAdaptor extends SharedTransportDecorator<UUID> {
               exceptionConsumer.accept(e);
             }
           } else {
-            System.out.println("Unknown sesion ID and no uninitialized session available");
+            // System.out.println("Unknown sesion ID and no uninitialized session available");
           }
         }
       }

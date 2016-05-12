@@ -125,8 +125,10 @@ public class IdempotentFlowReceiver extends AbstractReceiverFlow implements Flow
         isApplicationMessage = false;
         break;
       default:
-        System.out.println("IdempotentFlowReceiver: Protocol violation; unexpected session message "
-            + decoder.getMessageType());
+//        System.out.println("IdempotentFlowReceiver: Protocol violation; unexpected session message "
+//            + decoder.getMessageType());
+        buffer.reset();
+        reactor.post(terminatedTopic, buffer);
       }
     }
     if (isApplicationMessage && !isEndOfStream) {

@@ -45,6 +45,10 @@ public class SbeMessageHeaderDecoder {
     return buffer.getShort(offset + BLOCK_LENGTH_OFFSET) & 0xffff;
   }
 
+  public ByteBuffer getBuffer() {
+    return buffer;
+  }
+
   public int getSchemaId() {
     return buffer.getShort(offset + SCHEMA_ID_OFFSET) & 0xffff;
   }
