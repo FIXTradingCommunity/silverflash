@@ -118,6 +118,11 @@ public class UdpTransportBenchmark {
 
   private final InetSocketAddress clientAddress =
       new InetSocketAddress(InetAddress.getLoopbackAddress(), 7544);
+  private UdpTransport createClientTransport(Selector selector, InetSocketAddress serverAddress,
+      InetSocketAddress clientAddress) {
+    return new UdpTransport(selector, serverAddress, clientAddress);
+  }
+
   private IOReactor clientIOReactor;
   private UdpTransport clientTransport;
   
@@ -136,11 +141,6 @@ public class UdpTransportBenchmark {
   private UdpTransport createClientTransport(Dispatcher dispatcher, InetSocketAddress serverAddress,
       InetSocketAddress clientAddress) {
     return new UdpTransport(dispatcher, serverAddress, clientAddress);
-  }
-
-  private UdpTransport createClientTransport(Selector selector, InetSocketAddress serverAddress,
-      InetSocketAddress clientAddress) {
-    return new UdpTransport(selector, serverAddress, clientAddress);
   }
 
   private UdpTransport createServerTransport(Dispatcher dispatcher, InetSocketAddress serverAddress,
@@ -220,7 +220,7 @@ public class UdpTransportBenchmark {
 
     future.get(1000L, TimeUnit.MILLISECONDS);
     // client gets accepted signal before server transport is fully constructed
-    Thread.sleep(500L);
+    Thread.sleep(1000L);
   }
 
   @Benchmark

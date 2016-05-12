@@ -104,10 +104,10 @@ abstract class AbstractUdpTransport implements ReactiveTransport {
   }
 
   public int read() throws IOException {
+    try {
     ByteBuffer buffer = buffers.get();
     buffer.clear();
     int bytesRead = socketChannel.read(buffer);
-    buffers.commit();
     if (bytesRead < 0) {
       disconnected();
       socketChannel.close();
@@ -116,6 +116,9 @@ abstract class AbstractUdpTransport implements ReactiveTransport {
       consumer.accept(buffer);
     }
     return bytesRead;
+    } finally {
+      buffers.commit();
+    }
   }
 
   public void readyToRead() {
@@ -124,7 +127,6 @@ abstract class AbstractUdpTransport implements ReactiveTransport {
       final ByteBuffer buffer = buffers.get();
       buffer.clear();
       int bytesRead = socketChannel.read(buffer);
-      buffers.commit();
       if (bytesRead < 0) {
         disconnected();
         socketChannel.close();
@@ -133,9 +135,10 @@ abstract class AbstractUdpTransport implements ReactiveTransport {
         consumer.accept(buffer);
         addInterest(SelectionKey.OP_READ);
       }
-
     } catch (IOException e) {
       disconnected();
+    } finally {
+      buffers.commit();
     }
   }
 

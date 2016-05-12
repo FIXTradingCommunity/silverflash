@@ -53,7 +53,7 @@ public class UdpTransportTest {
     public void accept(ByteBuffer buf) {
       int bytesToReceive = buf.remaining();
       bytesReceived += bytesToReceive;
-      buf.get(dst, 0, Math.min(bytesToReceive, dst.length));
+      buf.get(dst, 0, bytesToReceive);
     }
 
     @Override
@@ -147,7 +147,7 @@ public class UdpTransportTest {
     clientTransport.open(
         clientBuffers,
         clientBuffers).get(1000L, TimeUnit.MILLISECONDS);
-
+    
     ByteBuffer buf = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
     int totalBytesSent = 0;
     for (int i = 0; i < messageCount; ++i) {
