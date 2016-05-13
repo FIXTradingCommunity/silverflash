@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -48,8 +49,11 @@ import org.fixtrading.silverflash.fixp.Engine;
 import org.fixtrading.silverflash.fixp.FixpSharedTransportAdaptor;
 import org.fixtrading.silverflash.fixp.auth.SimpleAuthenticator;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
 import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
 import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder.NotAppliedDecoder;
 import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.transport.Dispatcher;
@@ -147,6 +151,9 @@ public class SellSide {
             serverDecodeErrors++;
           }
           break;
+        case 0xfff0:
+          decodeNotApplied(inboundBuffer);
+          break;
         default:
           serverUnknown++;
           System.err.format("SellSide Receiver: Unknown template %s buffer %s\n",
@@ -187,16 +194,33 @@ public class SellSide {
       return true;
     }
 
+    private void decodeNotApplied(ByteBuffer buffer) {
+      Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
+      final Decoder decoder = optDecoder.get();
+      switch (decoder.getMessageType()) {
+        case NOT_APPLIED:
+          NotAppliedDecoder notAppliedDecoder = (NotAppliedDecoder) decoder;
+          long fromSeqNo = notAppliedDecoder.getFromSeqNo();
+          int count = notAppliedDecoder.getCount();
+          System.err.format("Not Applied from seq no %d count %d%n", fromSeqNo, count);
+          break;
+        default:
+          System.err.println("Unexpected application message");
+      }
+    }
+
     private void encodeAccept(OrderStruct orderStruct, MutableDirectBuffer directBuffer,
         ByteBuffer byteBuffer) {
       int bufferOffset = byteBuffer.position();
- 
+
       frameEncoder.wrap(byteBuffer);
       frameEncoder.encodeFrameHeader();
 
-      sbeEncoder.wrap(byteBuffer, frameEncoder.getHeaderLength())
-          .setBlockLength(accept.sbeBlockLength()).setTemplateId(accept.sbeTemplateId())
-          .setSchemaId(accept.sbeSchemaId()).getSchemaVersion(accept.sbeSchemaVersion());
+      bufferOffset += frameEncoder.getHeaderLength();
+
+      sbeEncoder.wrap(byteBuffer, bufferOffset).setBlockLength(accept.sbeBlockLength())
+          .setTemplateId(accept.sbeTemplateId()).setSchemaId(accept.sbeSchemaId())
+          .getSchemaVersion(accept.sbeSchemaVersion());
 
       bufferOffset += SbeMessageHeaderDecoder.getLength();
 
@@ -221,7 +245,9 @@ public class SellSide {
       accept.bBOWeightIndicator(BBOWeight.Level0);
       accept.orderEntryTime(orderStruct.transactTime);
 
-      byteBuffer.position(bufferOffset + accept.sbeBlockLength());
+      final int lengthwithHeader = SbeMessageHeaderDecoder.getLength() + accept.encodedLength();
+      frameEncoder.setMessageLength(lengthwithHeader);
+      frameEncoder.encodeFrameTrailer();
     }
 
   }
@@ -242,6 +268,20 @@ public class SellSide {
   public static final String SERVER_FLOW_SEQUENCED_KEY = "sequenced";
 
   public static final String SERVER_KEEPALIVE_INTERVAL_KEY = "heartbeatInterval";
+
+  private static Properties loadProperties(String fileName)
+      throws IOException, FileNotFoundException {
+    Properties defaults = setDefaultProperties();
+    Properties props = new Properties(defaults);
+
+    try (final FileReader reader = new FileReader(fileName)) {
+      props.load(reader);
+    } catch (IOException e) {
+      System.err.format("Failed to read properties from file %s\n", fileName);
+      throw e;
+    }
+    return props;
+  }
 
   public static void main(String[] args) throws Exception {
     if (args.length < 1) {
@@ -265,20 +305,6 @@ public class SellSide {
     sellSide.shutdown();
   }
 
-  private static Properties loadProperties(String fileName)
-      throws IOException, FileNotFoundException {
-    Properties defaults = setDefaultProperties();
-    Properties props = new Properties(defaults);
-
-    try (final FileReader reader = new FileReader(fileName)) {
-      props.load(reader);
-    } catch (IOException e) {
-      System.err.format("Failed to read properties from file %s\n", fileName);
-      throw e;
-    }
-    return props;
-  }
-
   private static Properties setDefaultProperties() {
     Properties defaults = new Properties();
     defaults.setProperty(SERVER_FLOW_RECOVERABLE_KEY, "true");
@@ -295,36 +321,25 @@ public class SellSide {
   }
 
   private final ConsumerSupplier consumerSupplier = new ConsumerSupplier();
-  private Engine engine;
 
+  private Engine engine;
   private ExceptionConsumer exceptionConsumer = ex -> System.err.println(ex);
+
+  private final MessageDecoder messageDecoder = new MessageDecoder();
 
   private final Properties props;
 
   private final SessionConfigurationService serverConfig = new SessionConfigurationService() {
 
-    public byte[] getCredentials() {
-      return null;
-    }
+    public byte[]getCredentials(){return null;}
 
-    public int getKeepaliveInterval() {
-      return Integer.parseInt(props.getProperty(SERVER_KEEPALIVE_INTERVAL_KEY));
-    }
+  public int getKeepaliveInterval(){return Integer.parseInt(props.getProperty(SERVER_KEEPALIVE_INTERVAL_KEY));}
 
-    @Override
-    public boolean isOutboundFlowRecoverable() {
-      String property = props.getProperty(SERVER_FLOW_RECOVERABLE_KEY);
-      return Boolean.parseBoolean(property);
-    }
+  @Override public boolean isOutboundFlowRecoverable(){String property=props.getProperty(SERVER_FLOW_RECOVERABLE_KEY);return Boolean.parseBoolean(property);}
 
-    public boolean isOutboundFlowSequenced() {
-      String property = props.getProperty(SERVER_FLOW_SEQUENCED_KEY);
-      return Boolean.parseBoolean(property);
-    }
+  public boolean isOutboundFlowSequenced(){String property=props.getProperty(SERVER_FLOW_SEQUENCED_KEY);return Boolean.parseBoolean(property);}
 
-    public boolean isTransportMultiplexed() {
-      return Boolean.parseBoolean(props.getProperty(MULTIPLEXED_KEY));
-    }
+  public boolean isTransportMultiplexed(){return Boolean.parseBoolean(props.getProperty(MULTIPLEXED_KEY));}
 
   };
   private FixpSharedTransportAdaptor sharedTransport = null;
@@ -347,6 +362,19 @@ public class SellSide {
     Properties defaults = setDefaultProperties();
     this.props = new Properties(defaults);
     this.props.putAll(props);
+  }
+
+  private Transport createRawTransport(String protocol) throws IOException {
+    Transport transport;
+    switch (protocol) {
+      case PROTOCOL_SHARED_MEMORY:
+        transport =
+            new SharedMemoryTransport(false, true, 1, new Dispatcher(engine.getThreadFactory()));
+        break;
+      default:
+        throw new IOException("Unsupported protocol");
+    }
+    return transport;
   }
 
   public void init() throws Exception {
@@ -425,19 +453,6 @@ public class SellSide {
     }
     engine.close();
     System.exit(0);
-  }
-
-  private Transport createRawTransport(String protocol) throws IOException {
-    Transport transport;
-    switch (protocol) {
-      case PROTOCOL_SHARED_MEMORY:
-        transport =
-            new SharedMemoryTransport(false, true, 1, new Dispatcher(engine.getThreadFactory()));
-        break;
-      default:
-        throw new IOException("Unsupported protocol");
-    }
-    return transport;
   }
 
 }

@@ -52,6 +52,7 @@ public class SimplexStreamSequencer implements Sequencer, MutableSequence {
     this.nextSeqNo = nextSeqNo;
     sequenceEncoder =
         (SequenceEncoder) messageEncoder.wrap(sequenceBuffer, 0, MessageType.SEQUENCE);
+    sequenceEncoder.setNextSeqNo(nextSeqNo);
   }
 
   /*

@@ -63,7 +63,7 @@ public class SbeMessageHeaderDecoder {
 
   @Override
   public String toString() {
-    return "MessageHeaderWithFrame [blockLength=" + getBlockLength() + ", templateId="
+    return "SbeMessageHeaderDecoder [blockLength=" + getBlockLength() + ", templateId="
         + getTemplateId() + ", schemaId=" + getSchemaId() + ", schemaVersion=" + getSchemaVersion()
         + "]";
   }

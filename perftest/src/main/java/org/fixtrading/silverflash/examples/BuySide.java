@@ -1,17 +1,15 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ * Copyright 2015 FIX Protocol Ltd
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations under
+ * the License.
  *
  */
 
@@ -23,6 +21,7 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -48,6 +47,9 @@ import org.fixtrading.silverflash.fixp.FixpSharedTransportAdaptor;
 import org.fixtrading.silverflash.fixp.SessionReadyFuture;
 import org.fixtrading.silverflash.fixp.SessionTerminatedFuture;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
+import org.fixtrading.silverflash.fixp.messages.MessageDecoder.NotAppliedDecoder;
 import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
 import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
 import org.fixtrading.silverflash.frame.MessageFrameEncoder;
@@ -69,12 +71,97 @@ import uk.co.real_logic.agrona.concurrent.UnsafeBuffer;
  * Presentation layer: SBE
  * <p>
  * Command line:
- * {@code java -cp session-perftest-0.0.1-SNAPSHOT-jar-with-dependencies.jar org.fixtrading.silverflash.examples.BuySide <properties-file> }
+ * {@code java -cp session-perftest-0.0.1-SNAPSHOT-jar-with-dependencies.jar org.fixtrading.silverflash.examples.BuySide 
+ * <properties-file> }
  *
  * @author Don Mendelson
  * 
  */
 public class BuySide implements Runnable {
+
+  class ClientListener implements MessageConsumer<UUID> {
+
+    class AcceptStruct {
+      byte[] clientId = new byte[4];
+      byte[] clOrdId = new byte[14];
+      long orderId;
+      byte[] symbol = new byte[8];
+    }
+
+    private final AcceptedDecoder accept = new AcceptedDecoder();
+    private final AcceptStruct acceptStruct = new AcceptStruct();
+    private final DirectBuffer directBuffer = new UnsafeBuffer(ByteBuffer.allocate(0));
+    private final SbeMessageHeaderDecoder messageHeaderIn = new SbeMessageHeaderDecoder();
+    private final Histogram rttHistogram;
+
+    public ClientListener(Histogram rttHistogram) {
+      this.rttHistogram = rttHistogram;
+    }
+
+    public void accept(ByteBuffer buffer, Session<UUID> session, long seqNo) {
+
+      messageHeaderIn.wrap(buffer, buffer.position());
+
+      final int templateId = messageHeaderIn.getTemplateId();
+      switch (templateId) {
+        case AcceptedDecoder.TEMPLATE_ID:
+          decodeAccepted(buffer, acceptStruct);
+          break;
+        case 0xfff0:
+          decodeNotApplied(buffer);
+          break;
+        default:
+          System.err.format("BuySide Receiver: Unknown template %s\n", messageHeaderIn.toString());
+      }
+    }
+
+    private void decodeAccepted(ByteBuffer buffer, AcceptStruct acceptStruct) {
+      try {
+        directBuffer.wrap(buffer);
+        accept.wrap(directBuffer, buffer.position() + SbeMessageHeaderDecoder.getLength(),
+            messageHeaderIn.getBlockLength(), messageHeaderIn.getSchemaVersion());
+        // long transactTime = accept.transactTime();
+        // accept.getClOrdId(acceptStruct.clOrdId, 0);
+        // accept.side();
+        // accept.orderQty();
+        // accept.getSymbol(acceptStruct.symbol, 0);
+        // accept.price();
+        // accept.expireTime();
+        // accept.getClientID(acceptStruct.clientId, 0);
+        // accept.display();
+        // acceptStruct.orderId = accept.orderId();
+        // accept.orderCapacity();
+        // accept.intermarketSweepEligibility();
+        // accept.minimumQuantity();
+        // accept.crossType();
+        // accept.ordStatus();
+        // accept.bBOWeightIndicator();
+        long orderEntryTime = accept.orderEntryTime();
+        if (orderEntryTime != 0) {
+          long now = System.nanoTime();
+          rttHistogram.recordValue(now - orderEntryTime);
+        }
+      } catch (IllegalArgumentException e) {
+        System.err.format("Decode error; %s buffer %s\n", e.getMessage(), buffer.toString());
+      }
+    }
+
+    private void decodeNotApplied(ByteBuffer buffer) {
+      Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
+      final Decoder decoder = optDecoder.get();
+      switch (decoder.getMessageType()) {
+        case NOT_APPLIED:
+          NotAppliedDecoder notAppliedDecoder = (NotAppliedDecoder) decoder;
+          long fromSeqNo = notAppliedDecoder.getFromSeqNo();
+          int count = notAppliedDecoder.getCount();
+          System.err.format("Not Applied from seq no %d count %d%n", fromSeqNo, count);
+          break;
+        default:
+          System.err.println("Unexpected application message");
+
+      }
+    }
+  }
 
   private class ClientRunner implements Runnable {
 
@@ -84,12 +171,12 @@ public class BuySide implements Runnable {
     private final Session<UUID> client;
     private final byte[] clOrdId = new byte[14];
     private final ByteBuffer clOrdIdBuffer;
+    private MessageFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
     private final int orders;
     private final int ordersPerPacket;
     private final Histogram rttHistogram;
-    private SessionTerminatedFuture terminatedFuture;
-    private MessageFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
     private SbeMessageHeaderEncoder sbeEncoder = new SbeMessageHeaderEncoder();
+    private SessionTerminatedFuture terminatedFuture;
 
     public ClientRunner(Session<UUID> client, Histogram rttHistogram, int orders, int batchSize,
         int ordersPerPacket, long batchPauseMillis) {
@@ -126,11 +213,53 @@ public class BuySide implements Runnable {
         System.out.println("Connected; session ID=" + client.getSessionId());
         executor.execute(this);
       } catch (Exception e) {
-        System.out.println("Failed to connect; session ID=" + client.getSessionId() + "; "
-            + e.getMessage());
+        System.out.println(
+            "Failed to connect; session ID=" + client.getSessionId() + "; " + e.getMessage());
         terminatedFuture.completeExceptionally(e);
       }
       return terminatedFuture;
+    }
+
+    private void encodeOrder(MutableDirectBuffer directBuffer, ByteBuffer byteBuffer,
+        boolean shouldTimestamp, int orderNumber) {
+      int bufferOffset = byteBuffer.position();
+
+      frameEncoder.wrap(byteBuffer);
+      frameEncoder.encodeFrameHeader();
+
+      bufferOffset += frameEncoder.getHeaderLength();
+
+      sbeEncoder.wrap(byteBuffer, bufferOffset).setBlockLength(order.sbeBlockLength())
+          .setTemplateId(order.sbeTemplateId()).setSchemaId(order.sbeSchemaId())
+          .getSchemaVersion(order.sbeSchemaVersion());
+
+      bufferOffset += SbeMessageHeaderDecoder.getLength();
+
+      order.wrap(directBuffer, bufferOffset);
+
+      clOrdIdBuffer.putInt(6, orderNumber);
+      order.putClOrdId(clOrdId, 0);
+      order.side(Side.Sell);
+      order.orderQty(1L);
+      order.putSymbol(symbol, 0);
+      order.price().mantissa(10000000);
+      order.expireTime(1000L);
+      order.putClientID(clientId, 0);
+      order.display(Display.AnonymousPrice);
+      order.orderCapacity(OrderCapacity.Agency);
+      order.intermarketSweepEligibility(IntermarketSweepEligibility.Eligible);
+      order.minimumQuantity(1L);
+      order.crossType(CrossType.NoCross);
+      order.customerType(CustomerType.Retail);
+      if (shouldTimestamp) {
+        order.transactTime(System.nanoTime());
+      } else {
+        order.transactTime(0);
+      }
+
+      final int lengthwithHeader = SbeMessageHeaderDecoder.getLength() + order.encodedLength();
+      frameEncoder.setMessageLength(lengthwithHeader);
+      frameEncoder.encodeFrameTrailer();
     }
 
     /**
@@ -211,8 +340,8 @@ public class BuySide implements Runnable {
     }
 
     /**
-		 * 
-		 */
+    	 * 
+    	 */
     public void report() {
       System.out.format("Client session ID %s\nRTT microseconds\n", client.getSessionId());
       printStats(rttHistogram);
@@ -235,109 +364,6 @@ public class BuySide implements Runnable {
         System.out.println("Buy side session closed");
       }
     }
-
-    private void encodeOrder(MutableDirectBuffer directBuffer, ByteBuffer byteBuffer,
-        boolean shouldTimestamp, int orderNumber) {
-      int bufferOffset = byteBuffer.position();
-
-      frameEncoder.wrap(byteBuffer);
-      frameEncoder.encodeFrameHeader();
-
-      sbeEncoder.wrap(byteBuffer, frameEncoder.getHeaderLength())
-          .setBlockLength(order.sbeBlockLength()).setTemplateId(order.sbeTemplateId())
-          .setSchemaId(order.sbeSchemaId()).getSchemaVersion(order.sbeSchemaVersion());
-
-      bufferOffset += SbeMessageHeaderDecoder.getLength();
-
-      order.wrap(directBuffer, bufferOffset);
-
-      clOrdIdBuffer.putInt(6, orderNumber);
-      order.putClOrdId(clOrdId, 0);
-      order.side(Side.Sell);
-      order.orderQty(1L);
-      order.putSymbol(symbol, 0);
-      order.price().mantissa(10000000);
-      order.expireTime(1000L);
-      order.putClientID(clientId, 0);
-      order.display(Display.AnonymousPrice);
-      order.orderCapacity(OrderCapacity.Agency);
-      order.intermarketSweepEligibility(IntermarketSweepEligibility.Eligible);
-      order.minimumQuantity(1L);
-      order.crossType(CrossType.NoCross);
-      order.customerType(CustomerType.Retail);
-      if (shouldTimestamp) {
-        order.transactTime(System.nanoTime());
-      } else {
-        order.transactTime(0);
-      }
-      byteBuffer.position(bufferOffset + order.sbeBlockLength());
-    }
-  }
-
-  class ClientListener implements MessageConsumer<UUID> {
-
-    class AcceptStruct {
-      byte[] clientId = new byte[4];
-      byte[] clOrdId = new byte[14];
-      long orderId;
-      byte[] symbol = new byte[8];
-    }
-
-    private final AcceptedDecoder accept = new AcceptedDecoder();
-    private final AcceptStruct acceptStruct = new AcceptStruct();
-    private final DirectBuffer directBuffer = new UnsafeBuffer(ByteBuffer.allocate(0));
-    private final SbeMessageHeaderDecoder messageHeaderIn = new SbeMessageHeaderDecoder();
-    private final Histogram rttHistogram;
-
-    public ClientListener(Histogram rttHistogram) {
-      this.rttHistogram = rttHistogram;
-    }
-
-    public void accept(ByteBuffer buffer, Session<UUID> session, long seqNo) {
-
-      messageHeaderIn.wrap(buffer, buffer.position());
-
-      final int templateId = messageHeaderIn.getTemplateId();
-      switch (templateId) {
-        case AcceptedDecoder.TEMPLATE_ID:
-          decodeAccepted(buffer, acceptStruct);
-          break;
-        default:
-          System.err.format("BuySide Receiver: Unknown template %s\n", messageHeaderIn.toString());
-      }
-    }
-
-    private void decodeAccepted(ByteBuffer buffer, AcceptStruct acceptStruct) {
-      try {
-        directBuffer.wrap(buffer);
-        accept.wrap(directBuffer, buffer.position() + SbeMessageHeaderDecoder.getLength(),
-            messageHeaderIn.getBlockLength(), messageHeaderIn.getSchemaVersion());
-        // long transactTime = accept.transactTime();
-        // accept.getClOrdId(acceptStruct.clOrdId, 0);
-        // accept.side();
-        // accept.orderQty();
-        // accept.getSymbol(acceptStruct.symbol, 0);
-        // accept.price();
-        // accept.expireTime();
-        // accept.getClientID(acceptStruct.clientId, 0);
-        // accept.display();
-        // acceptStruct.orderId = accept.orderId();
-        // accept.orderCapacity();
-        // accept.intermarketSweepEligibility();
-        // accept.minimumQuantity();
-        // accept.crossType();
-        // accept.ordStatus();
-        // accept.bBOWeightIndicator();
-        long orderEntryTime = accept.orderEntryTime();
-        if (orderEntryTime != 0) {
-          long now = System.nanoTime();
-          rttHistogram.recordValue(now - orderEntryTime);
-        }
-      } catch (IllegalArgumentException e) {
-        System.err.format("Decode error; %s buffer %s\n", e.getMessage(), buffer.toString());
-      }
-    }
-
   }
 
   /*
@@ -369,23 +395,11 @@ public class BuySide implements Runnable {
   public static final String SERVER_RECOVERY_KEY = "serverRecovery";
   public static final String SERVER_RECOVERY_OUTOFBAND = "outOfBand";
 
-  public static void main(String[] args) throws Exception {
-    if (args.length < 1) {
-      System.err.println("Usage: java org.fixtrading.silverflash.examples.BuySide <conf-filename>");
-      System.exit(1);
-    }
-
-    Properties props = loadProperties(args[0]);
-    final BuySide buySide = new BuySide(props);
-    buySide.init();
-    buySide.run();
-  }
-
   private static Properties getDefaultProperties() {
     Properties defaults = new Properties();
     defaults.setProperty(CLIENT_FLOW_SEQUENCED_KEY, "true");
     defaults.setProperty(CLIENT_FLOW_RECOVERABLE_KEY, "false");
-    defaults.setProperty(INJECT_ORDERS_TO_SEND, Integer.toString(500));
+    defaults.setProperty(INJECT_ORDERS_TO_SEND, Integer.toString(50000));
     defaults.setProperty(INJECT_ORDERS_PER_PACKET, Integer.toString(10));
     defaults.setProperty(PROTOCOL_KEY, PROTOCOL_TCP);
     defaults.setProperty(MULTIPLEXED_KEY, "false");
@@ -416,6 +430,18 @@ public class BuySide implements Runnable {
       throw e;
     }
     return props;
+  }
+
+  public static void main(String[] args) throws Exception {
+    if (args.length < 1) {
+      System.err.println("Usage: java org.fixtrading.silverflash.examples.BuySide <conf-filename>");
+      System.exit(1);
+    }
+
+    Properties props = loadProperties(args[0]);
+    final BuySide buySide = new BuySide(props);
+    buySide.init();
+    buySide.run();
   }
 
   private static void printStats(Histogram data) {
@@ -466,10 +492,11 @@ public class BuySide implements Runnable {
 
   private final byte[] clientId = "0999".getBytes();
   private Engine engine;
-
   private ExceptionConsumer exceptionConsumer = ex -> System.err.println(ex);
 
   private ExecutorService executor;
+
+  private final MessageDecoder messageDecoder = new MessageDecoder();
   private int numberOfClients;
   private final EnterOrderEncoder order = new EnterOrderEncoder();
   private int ordersToSend;
@@ -495,6 +522,24 @@ public class BuySide implements Runnable {
     ordersToSend = Integer.parseInt(this.props.getProperty(INJECT_ORDERS_TO_SEND));
   }
 
+  private Transport createRawTransport(String protocol, SocketAddress remoteAddress)
+      throws Exception {
+    Transport transport;
+    switch (protocol) {
+      case PROTOCOL_TCP:
+        SocketAddress serverAddress;
+        transport = new TcpConnectorTransport(engine.getIOReactor().getSelector(), remoteAddress);
+        break;
+      case PROTOCOL_SHARED_MEMORY:
+        transport =
+            new SharedMemoryTransport(true, true, 1, new Dispatcher(engine.getThreadFactory()));
+        break;
+      default:
+        throw new IOException("Unsupported protocol");
+    }
+    return transport;
+  }
+
   public Session<UUID> createSession(int sessionIndex, FixpSessionFactory fixpSessionFactory,
       Histogram rttHistogram) throws Exception {
     String protocol = props.getProperty(PROTOCOL_KEY);
@@ -502,9 +547,8 @@ public class BuySide implements Runnable {
 
     boolean isSequenced = clientConfig.isOutboundFlowSequenced();
     boolean isRecoverable = clientConfig.isOutboundFlowRecoverable();
-    FlowType outboundFlow =
-        isSequenced ? (isRecoverable ? FlowType.RECOVERABLE : FlowType.IDEMPOTENT)
-            : FlowType.UNSEQUENCED;
+    FlowType outboundFlow = isSequenced
+        ? (isRecoverable ? FlowType.RECOVERABLE : FlowType.IDEMPOTENT) : FlowType.UNSEQUENCED;
     boolean isMultiplexed = clientConfig.isTransportMultiplexed();
 
     String remotehost = props.getProperty(REMOTE_HOST_KEY);
@@ -524,6 +568,25 @@ public class BuySide implements Runnable {
     return fixpSessionFactory.createClientSession(credentials, transport, new SingleBufferSupplier(
         ByteBuffer.allocateDirect(16 * 1024).order(ByteOrder.nativeOrder())), clientListener,
         outboundFlow);
+  }
+
+  private Transport createTransport(String protocol, boolean isMultiplexed,
+      SocketAddress remoteAddress) throws Exception {
+    Transport transport;
+    if (isMultiplexed) {
+      if (sharedTransport == null) {
+        sharedTransport = FixpSharedTransportAdaptor.builder().withReactor(engine.getReactor())
+            .withTransport(createRawTransport(protocol, remoteAddress))
+            .withBufferSupplier(new SingleBufferSupplier(
+                ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
+            .withFlowType(FlowType.IDEMPOTENT).build();
+      }
+      transport = sharedTransport;
+    } else {
+      transport = createRawTransport(protocol, remoteAddress);
+    }
+
+    return transport;
   }
 
   /**
@@ -562,9 +625,8 @@ public class BuySide implements Runnable {
     engine.open();
     executor = engine.newNonAffinityThreadPool(numberOfClients);
 
-    FixpSessionFactory fixpSessionFactory =
-        new FixpSessionFactory(engine.getReactor(), clientConfig.getKeepaliveInterval(),
-            clientConfig.isTransportMultiplexed());
+    FixpSessionFactory fixpSessionFactory = new FixpSessionFactory(engine.getReactor(),
+        clientConfig.getKeepaliveInterval(), clientConfig.isTransportMultiplexed());
 
     runners = new ClientRunner[numberOfClients];
     for (int i = 0; i < numberOfClients; ++i) {
@@ -574,11 +636,11 @@ public class BuySide implements Runnable {
 
       final Session<UUID> client = createSession(i, fixpSessionFactory, rttHistogram);
 
-      runners[i] =
-          new ClientRunner(client, rttHistogram, ordersToSend, batchSize, ordersPerPacket,
-              batchPauseMillis);
+      runners[i] = new ClientRunner(client, rttHistogram, ordersToSend, batchSize, ordersPerPacket,
+          batchPauseMillis);
     }
   }
+
 
   public void run() {
     SessionTerminatedFuture[] terminatedFutures = new SessionTerminatedFuture[numberOfClients];
@@ -606,51 +668,11 @@ public class BuySide implements Runnable {
     this.ordersToSend = ordersToSend;
   }
 
-
   public void shutdown() {
     System.out.println("Shutting down");
     engine.close();
     executor.shutdown();
     System.exit(0);
-  }
-
-  private Transport createRawTransport(String protocol, SocketAddress remoteAddress)
-      throws Exception {
-    Transport transport;
-    switch (protocol) {
-      case PROTOCOL_TCP:
-        SocketAddress serverAddress;
-        transport = new TcpConnectorTransport(engine.getIOReactor().getSelector(), remoteAddress);
-        break;
-      case PROTOCOL_SHARED_MEMORY:
-        transport = new SharedMemoryTransport(true, true, 1, new Dispatcher(engine.getThreadFactory()));
-        break;
-      default:
-        throw new IOException("Unsupported protocol");
-    }
-    return transport;
-  }
-
-  private Transport createTransport(String protocol, boolean isMultiplexed,
-      SocketAddress remoteAddress) throws Exception {
-    Transport transport;
-    if (isMultiplexed) {
-      if (sharedTransport == null) {
-        sharedTransport =
-            FixpSharedTransportAdaptor
-                .builder()
-                .withReactor(engine.getReactor())
-                .withTransport(createRawTransport(protocol, remoteAddress))
-                .withBufferSupplier(
-                    new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(
-                        ByteOrder.nativeOrder()))).withFlowType(FlowType.IDEMPOTENT).build();
-      }
-      transport = sharedTransport;
-    } else {
-      transport = createRawTransport(protocol, remoteAddress);
-    }
-
-    return transport;
   }
 
 }
