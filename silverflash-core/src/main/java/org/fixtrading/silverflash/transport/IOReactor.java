@@ -121,7 +121,6 @@ public class IOReactor implements Runnable, Service {
         exceptionConsumer.accept(e);
       } catch (Exception e) {
         exceptionConsumer.accept(e);
-        running.set(false);
       }
     }
     

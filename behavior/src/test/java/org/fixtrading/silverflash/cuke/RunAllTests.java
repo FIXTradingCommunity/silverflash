@@ -28,7 +28,7 @@ import cucumber.api.CucumberOptions;
 import cucumber.api.junit.Cucumber;
 
 @RunWith(Cucumber.class)
-@CucumberOptions(format = {"pretty", "html:target/cucumber"},
+@CucumberOptions(plugin = {"pretty", "html:target/cucumber"},
     features = "src/test/resources/features")
 public class RunAllTests {
 
@@ -52,13 +52,13 @@ public class RunAllTests {
   public static void initTestEnvironment() throws Exception {
     System.out.println("Initializing test environment");
     clientEngine = Engine.builder().build();
-    clientEngine.getReactor().setTrace(true, "client");
+    //clientEngine.getReactor().setTrace(true, "client");
     clientEngine.open();
 
     serverEngine =
         Engine.builder().withAuthenticator(new SimpleAuthenticator().withDirectory(directory))
             .build();
-    serverEngine.getReactor().setTrace(true, "server");
+    //serverEngine.getReactor().setTrace(true, "server");
     serverEngine.open();
   }
 

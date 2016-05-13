@@ -16,12 +16,12 @@
  */
 package org.fixtrading.silverflash.cuke;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Arrays;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -60,6 +60,11 @@ public class SessionStepdefs {
 
     public ByteBuffer getLastMessage() {
       return ByteBuffer.wrap(message, 0, length).order(ByteOrder.nativeOrder());
+    }
+    
+    public byte [] getLastMessageAsBytes() {
+      return Arrays.copyOfRange(message, 
+          SbeMessageHeaderEncoder.getLength(), length);
     }
 
     @Override
@@ -145,12 +150,12 @@ public class SessionStepdefs {
   private final ByteBuffer applicationMessageBuffer;
   private TestReceiver clientReceiver;
   private int outboundKeepaliveInterval = 500;
-  private MessageFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
-  private SbeMessageHeaderEncoder sbeEncoder = new SbeMessageHeaderEncoder();
+  private final MessageFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
+  private final SbeMessageHeaderEncoder sbeEncoder = new SbeMessageHeaderEncoder();
+  private final byte[] message = "This an application message".getBytes();
 
   public SessionStepdefs() throws Exception {
-    byte[] message = "This an application message".getBytes();
-    applicationMessageBuffer =
+      applicationMessageBuffer =
         ByteBuffer.allocate(128).order(ByteOrder.nativeOrder());
     encodeApplicationMessageWithFrame(applicationMessageBuffer, message);
   }
@@ -166,7 +171,7 @@ public class SessionStepdefs {
 
     // force explicit sequencing
     Transport serverTransport =
-        new TestTransportDecorator(memoryTransport.getServerTransport(), true);
+        new TestTransportDecorator(memoryTransport.getServerTransport(), false);
     serverReceiver = new TestReceiver();
 
     serverSession =
@@ -182,7 +187,7 @@ public class SessionStepdefs {
 
 
     Transport clientTransport =
-        new TestTransportDecorator(memoryTransport.getClientTransport(), true);
+        new TestTransportDecorator(memoryTransport.getClientTransport(), false);
     clientReceiver = new TestReceiver();
 
     clientSession =
@@ -229,8 +234,7 @@ public class SessionStepdefs {
 
   @Then("^presents it to its application$")
   public void presents_it_to_its_application() throws Throwable {
-    applicationMessageBuffer.rewind();
-    assertEquals(applicationMessageBuffer, serverReceiver.getLastMessage());
+    assertArrayEquals(message, serverReceiver.getLastMessageAsBytes());
   }
 
   @Then("^the server application has received a total of (\\d+) messages$")

@@ -88,7 +88,8 @@ public class IdempotentFlowReceiver extends AbstractReceiverFlow implements Flow
     Objects.requireNonNull(messageConsumer);
     notAppliedEncoder = (NotAppliedEncoder) messageEncoder.wrap(notAppliedBuffer, 0,
         MessageType.NOT_APPLIED);
-    notAppliedBuffer.limit(SbeMessageHeaderDecoder.getLength() + notAppliedEncoder.getBlockLength());
+    notAppliedEncoder.setFromSeqNo(0);
+    notAppliedEncoder.setCount(0);
     toSendTopic = SessionEventTopics.getTopic(sessionId, APPLICATION_MESSAGE_TO_SEND);
     terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
 
