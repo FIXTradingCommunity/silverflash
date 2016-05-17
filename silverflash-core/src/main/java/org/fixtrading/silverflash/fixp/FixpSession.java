@@ -583,10 +583,6 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     return clientSessionEstablisher;
   }
 
-  /**
-   * @param topic
-   * @return
-   */
   private Establisher createMulticastProducerEstablisher(String topic) {
     final MulticastProducerEstablisher serverSessionEstablisher = new MulticastProducerEstablisher(
         reactor, getTransport(), outboundFlow, topic, sessionId, messageEncoder);

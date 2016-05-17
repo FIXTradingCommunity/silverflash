@@ -26,6 +26,7 @@ import java.util.function.Consumer;
  * @author Don Mendelson
  *
  */
+@FunctionalInterface
 public interface Receiver extends Consumer<ByteBuffer> {
 
 }

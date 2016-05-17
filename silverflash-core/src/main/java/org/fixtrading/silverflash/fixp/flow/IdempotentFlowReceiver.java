@@ -37,7 +37,6 @@ import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
 import org.fixtrading.silverflash.fixp.messages.MessageDecoder.SequenceDecoder;
 import org.fixtrading.silverflash.fixp.messages.MessageEncoder.NotAppliedEncoder;
 import org.fixtrading.silverflash.fixp.messages.MessageType;
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;

@@ -35,7 +35,7 @@ import org.fixtrading.silverflash.auth.Directory;
 import org.fixtrading.silverflash.auth.Entity;
 
 /**
- * 
+ * Authenticates users by matching their credentials to a directory entry
  * 
  * @author Don Mendelson
  *

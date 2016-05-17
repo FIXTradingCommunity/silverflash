@@ -20,7 +20,6 @@ package org.fixtrading.silverflash.fixp.messages;
 import java.nio.ByteBuffer;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 import org.fixtrading.silverflash.fixp.SessionId;

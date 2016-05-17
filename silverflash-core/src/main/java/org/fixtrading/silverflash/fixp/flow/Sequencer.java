@@ -23,6 +23,8 @@ import java.util.function.Function;
 import org.fixtrading.silverflash.Sequenced;
 
 /**
+ * Responsible for tracking sequence of messages
+ * 
  * @author Don Mendelson
  *
  */

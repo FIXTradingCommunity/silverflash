@@ -23,6 +23,7 @@ import java.util.UUID;
 import org.fixtrading.silverflash.fixp.SessionId;
 
 /**
+ * Represents the owner of a FIXP session
  * @author Don Mendelson
  *
  */
@@ -47,6 +48,10 @@ public class SessionPrincipal implements Principal {
     return uuid.toString();
   }
 
+  /**
+   * Returns session ID
+   * @return a unique identifier
+   */
   public UUID getUUID() {
     return uuid;
   }

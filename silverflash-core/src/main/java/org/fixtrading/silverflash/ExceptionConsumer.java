@@ -27,6 +27,7 @@ import java.util.function.Consumer;
  * @author Don Mendelson
  *
  */
+@FunctionalInterface
 public interface ExceptionConsumer extends Consumer<Exception> {
 
 }
