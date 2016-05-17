@@ -50,6 +50,7 @@ public class MultiplexSequencer implements Sequencer, MutableSequence {
     contextEncoder =
         (ContextEncoder) messageEncoder.wrap(contextBuffer, 0, MessageType.CONTEXT);
     contextEncoder.setSessionId(uuidAsBytes);
+    contextEncoder.setNextSeqNo(nextSeqNo);
   }
 
   /*

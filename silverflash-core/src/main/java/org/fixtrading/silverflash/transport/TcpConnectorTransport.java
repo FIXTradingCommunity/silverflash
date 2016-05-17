@@ -84,6 +84,7 @@ public class TcpConnectorTransport extends AbstractTcpChannel implements Connect
 
       if (this.socketChannel.isConnected()) {
         future.complete(this);
+        consumer.connected();
       }
       
       if (dispatcher != null) {

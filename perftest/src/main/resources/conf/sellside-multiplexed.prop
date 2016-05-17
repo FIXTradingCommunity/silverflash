@@ -1,0 +1,9 @@
+# Configuration for SellSide with TCP transport
+protocol=tcp
+
+# Share a transport between sessions
+multiplexed=true
+
+# Uses a dedicated dispatcher thread 
+reactive=false
+clients=2

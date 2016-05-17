@@ -58,6 +58,7 @@ import org.fixtrading.silverflash.transport.Dispatcher;
 import org.fixtrading.silverflash.transport.SharedMemoryTransport;
 import org.fixtrading.silverflash.transport.TcpConnectorTransport;
 import org.fixtrading.silverflash.transport.Transport;
+import org.fixtrading.silverflash.transport.UdpTransport;
 
 import uk.co.real_logic.agrona.DirectBuffer;
 import uk.co.real_logic.agrona.MutableDirectBuffer;
@@ -209,12 +210,11 @@ public class BuySide implements Runnable {
         CompletableFuture<ByteBuffer> readyFuture =
             new SessionReadyFuture(client.getSessionId(), engine.getReactor());
         client.open();
-        readyFuture.get(1000000, TimeUnit.MILLISECONDS);
+        readyFuture.get(5000, TimeUnit.MILLISECONDS);
         System.out.println("Connected; session ID=" + client.getSessionId());
         executor.execute(this);
       } catch (Exception e) {
-        System.out.println(
-            "Failed to connect; session ID=" + client.getSessionId() + "; " + e.getMessage());
+        System.err.println("Failed to connect; session ID=" + client.getSessionId() + "; " + e);
         terminatedFuture.completeExceptionally(e);
       }
       return terminatedFuture;
@@ -380,13 +380,14 @@ public class BuySide implements Runnable {
   public static final String INJECT_ORDERS_TO_SEND = "orders";
   public static final String LOCAL_HOST_KEY = "localhost";
   public static final String LOCAL_PORT_KEY = "localport";
-  public static final String MULTIPLEXED_KEY = "multiplexed";
-  public static final String NUMBER_OF_CLIENTS = "clients";
+  public static final String MULTIPLEXED_TRANSPORT_KEY = "multiplexed";
+  public static final String NUMBER_OF_CLIENTS_KEY = "clients";
   public static final String PROTOCOL_KEY = "protocol";
   public static final String PROTOCOL_SHARED_MEMORY = "sharedmemory";
   public static final String PROTOCOL_SSL = "ssl";
   public static final String PROTOCOL_TCP = "tcp";
   public static final String PROTOCOL_UDP = "udp";
+  public static final String REACTIVE_TRANSPORT_KEY = "reactive";
   public static final String REMOTE_HOST_KEY = "remotehost";
   public static final String REMOTE_PORT_KEY = "remoteport";
   public static final String REMOTE_RECOVERY_HOST_KEY = "remoteRecoveryHost";
@@ -399,23 +400,24 @@ public class BuySide implements Runnable {
     Properties defaults = new Properties();
     defaults.setProperty(CLIENT_FLOW_SEQUENCED_KEY, "true");
     defaults.setProperty(CLIENT_FLOW_RECOVERABLE_KEY, "false");
-    defaults.setProperty(INJECT_ORDERS_TO_SEND, Integer.toString(50000));
-    defaults.setProperty(INJECT_ORDERS_PER_PACKET, Integer.toString(10));
-    defaults.setProperty(PROTOCOL_KEY, PROTOCOL_TCP);
-    defaults.setProperty(MULTIPLEXED_KEY, "false");
-    defaults.setProperty(LOCAL_HOST_KEY, "localhost");
-    defaults.setProperty(LOCAL_PORT_KEY, "6868");
-    defaults.setProperty(REMOTE_HOST_KEY, "localhost");
-    defaults.setProperty(REMOTE_PORT_KEY, "6869");
-    defaults.setProperty(REMOTE_RECOVERY_HOST_KEY, "localhost");
-    defaults.setProperty(REMOTE_RECOVERY_PORT_KEY, "6867");
     defaults.setProperty(CLIENT_KEEPALIVE_INTERVAL_KEY, "1000");
-    defaults.setProperty(INJECT_BATCH_SIZE, "100");
-    defaults.setProperty(INJECT_BATCH_PAUSE_MILLIS, "200");
-    defaults.setProperty(NUMBER_OF_CLIENTS, "1");
-    defaults.setProperty(SERVER_RECOVERY_KEY, SERVER_RECOVERY_INBAND);
     defaults.setProperty(CSET_MIN_CORE, "0");
     defaults.setProperty(CSET_MAX_CORE, "7");
+    defaults.setProperty(INJECT_BATCH_SIZE, "100");
+    defaults.setProperty(INJECT_BATCH_PAUSE_MILLIS, "200");
+    defaults.setProperty(INJECT_ORDERS_TO_SEND, Integer.toString(50000));
+    defaults.setProperty(INJECT_ORDERS_PER_PACKET, Integer.toString(10));
+    defaults.setProperty(LOCAL_HOST_KEY, "localhost");
+    defaults.setProperty(LOCAL_PORT_KEY, "6901");
+    defaults.setProperty(MULTIPLEXED_TRANSPORT_KEY, "false");
+    defaults.setProperty(NUMBER_OF_CLIENTS_KEY, "1");
+    defaults.setProperty(PROTOCOL_KEY, PROTOCOL_TCP);
+    defaults.setProperty(REACTIVE_TRANSPORT_KEY, "true");
+    defaults.setProperty(REMOTE_HOST_KEY, "localhost");
+    defaults.setProperty(REMOTE_PORT_KEY, "6801");
+    defaults.setProperty(REMOTE_RECOVERY_HOST_KEY, "localhost");
+    defaults.setProperty(REMOTE_RECOVERY_PORT_KEY, "6701");
+    defaults.setProperty(SERVER_RECOVERY_KEY, SERVER_RECOVERY_INBAND);
     return defaults;
   }
 
@@ -485,7 +487,7 @@ public class BuySide implements Runnable {
 
 
     public boolean isTransportMultiplexed() {
-      return Boolean.parseBoolean(props.getProperty(MULTIPLEXED_KEY));
+      return Boolean.parseBoolean(props.getProperty(MULTIPLEXED_TRANSPORT_KEY));
     }
 
   };
@@ -522,13 +524,59 @@ public class BuySide implements Runnable {
     ordersToSend = Integer.parseInt(this.props.getProperty(INJECT_ORDERS_TO_SEND));
   }
 
-  private Transport createRawTransport(String protocol, SocketAddress remoteAddress)
-      throws Exception {
+  private Transport createMultiplexedTransport() throws Exception {
+    if (sharedTransport == null) {
+      sharedTransport = FixpSharedTransportAdaptor.builder().withReactor(engine.getReactor())
+          .withTransport(createRawTransport(0))
+          .withBufferSupplier(new SingleBufferSupplier(
+              ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
+          .withFlowType(FlowType.IDEMPOTENT).build();
+    }
+
+    return sharedTransport;
+  }
+
+  private Transport createRawTransport(int sessionIndex) throws Exception {
+    String protocol = props.getProperty(PROTOCOL_KEY);
+    boolean isReactive = Boolean.getBoolean(props.getProperty(REACTIVE_TRANSPORT_KEY));
     Transport transport;
     switch (protocol) {
-      case PROTOCOL_TCP:
-        SocketAddress serverAddress;
-        transport = new TcpConnectorTransport(engine.getIOReactor().getSelector(), remoteAddress);
+      case PROTOCOL_TCP: {
+        String remotehost = props.getProperty(REMOTE_HOST_KEY);
+        int remoteport = Integer.parseInt(props.getProperty(REMOTE_PORT_KEY));
+        SocketAddress remoteAddress = null;
+        if (remotehost != null) {
+          remoteAddress = new InetSocketAddress(remotehost, remoteport);
+        }
+        if (isReactive) {
+          transport = new TcpConnectorTransport(engine.getIOReactor().getSelector(), remoteAddress);
+        } else {
+          transport =
+              new TcpConnectorTransport(new Dispatcher(engine.getThreadFactory()), remoteAddress);
+        }
+      }
+        break;
+      case PROTOCOL_UDP: {
+        String remotehost = props.getProperty(REMOTE_HOST_KEY);
+        int remoteport = Integer.parseInt(props.getProperty(REMOTE_PORT_KEY)) + sessionIndex;
+        SocketAddress remoteAddress = null;
+        if (remotehost != null) {
+          remoteAddress = new InetSocketAddress(remotehost, remoteport);
+        }
+        String localhost = props.getProperty(LOCAL_HOST_KEY);
+        int localport = Integer.parseInt(props.getProperty(LOCAL_PORT_KEY)) + sessionIndex;
+        SocketAddress localAddress = null;
+        if (remotehost != null) {
+          localAddress = new InetSocketAddress(localhost, localport);
+        }
+        if (isReactive) {
+          transport =
+              new UdpTransport(engine.getIOReactor().getSelector(), remoteAddress, localAddress);
+        } else {
+          transport = new UdpTransport(new Dispatcher(engine.getThreadFactory()), remoteAddress,
+              localAddress);
+        }
+      }
         break;
       case PROTOCOL_SHARED_MEMORY:
         transport =
@@ -542,7 +590,7 @@ public class BuySide implements Runnable {
 
   public Session<UUID> createSession(int sessionIndex, FixpSessionFactory fixpSessionFactory,
       Histogram rttHistogram) throws Exception {
-    String protocol = props.getProperty(PROTOCOL_KEY);
+
     String serverRecovery = props.getProperty(SERVER_RECOVERY_KEY);
 
     boolean isSequenced = clientConfig.isOutboundFlowSequenced();
@@ -551,48 +599,23 @@ public class BuySide implements Runnable {
         ? (isRecoverable ? FlowType.RECOVERABLE : FlowType.IDEMPOTENT) : FlowType.UNSEQUENCED;
     boolean isMultiplexed = clientConfig.isTransportMultiplexed();
 
-    String remotehost = props.getProperty(REMOTE_HOST_KEY);
-    int remoteport = Integer.parseInt(props.getProperty(REMOTE_PORT_KEY));
-    SocketAddress remoteAddress = null;
-    if (remotehost != null) {
-      remoteAddress = new InetSocketAddress(remotehost, remoteport);
-    }
-
     ClientListener clientListener = new ClientListener(rttHistogram);
 
     Transport transport;
-    transport = createTransport(protocol, isMultiplexed, remoteAddress);
+    if (isMultiplexed) {
+      transport = createMultiplexedTransport();
+    } else {
+      transport = createRawTransport(sessionIndex);
+    }
 
     String user = "client" + sessionIndex;
     byte[] credentials = user.getBytes();
-    return fixpSessionFactory.createClientSession(credentials, transport, new SingleBufferSupplier(
-        ByteBuffer.allocateDirect(16 * 1024).order(ByteOrder.nativeOrder())), clientListener,
-        outboundFlow);
+    return fixpSessionFactory.createClientSession(credentials, transport,
+        new SingleBufferSupplier(
+            ByteBuffer.allocateDirect(16 * 1024).order(ByteOrder.nativeOrder())),
+        clientListener, outboundFlow);
   }
 
-  private Transport createTransport(String protocol, boolean isMultiplexed,
-      SocketAddress remoteAddress) throws Exception {
-    Transport transport;
-    if (isMultiplexed) {
-      if (sharedTransport == null) {
-        sharedTransport = FixpSharedTransportAdaptor.builder().withReactor(engine.getReactor())
-            .withTransport(createRawTransport(protocol, remoteAddress))
-            .withBufferSupplier(new SingleBufferSupplier(
-                ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
-            .withFlowType(FlowType.IDEMPOTENT).build();
-      }
-      transport = sharedTransport;
-    } else {
-      transport = createRawTransport(protocol, remoteAddress);
-    }
-
-    return transport;
-  }
-
-  /**
-   * @param props
-   * @return
-   */
   public Properties getConfigurationWithDefaults(Properties props) {
     Properties defaults = getDefaultProperties();
     Properties props2 = new Properties(defaults);
@@ -613,7 +636,7 @@ public class BuySide implements Runnable {
     final int batchSize = Integer.parseInt((String) batchSizeString);
     final int ordersPerPacket = Integer.parseInt(props.getProperty(INJECT_ORDERS_PER_PACKET));
     final long batchPauseMillis = Long.parseLong(props.getProperty(INJECT_BATCH_PAUSE_MILLIS));
-    numberOfClients = Integer.parseInt(props.getProperty(NUMBER_OF_CLIENTS));
+    numberOfClients = Integer.parseInt(props.getProperty(NUMBER_OF_CLIENTS_KEY));
     final long highestTrackableValue = TimeUnit.MINUTES.toNanos(1);
     final int numberOfSignificantValueDigits = 3;
 

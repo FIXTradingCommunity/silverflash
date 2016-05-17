@@ -29,8 +29,9 @@ import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
+import java.util.function.Function;
 
+import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.auth.SimpleDirectory;
@@ -46,6 +47,7 @@ import org.fixtrading.silverflash.fixp.messages.FlowType;
 import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
 import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
+import org.fixtrading.silverflash.transport.IdentifiableTransportConsumer;
 import org.fixtrading.silverflash.transport.PipeTransport;
 import org.junit.After;
 import org.junit.Before;
@@ -56,6 +58,8 @@ import org.junit.Test;
  *
  */
 public class MultiplexTest {
+  private ExceptionConsumer exceptionConsumer = System.err::println;
+
 
   class TestReceiver implements MessageConsumer<UUID> {
     int bytesReceived = 0;
@@ -89,18 +93,36 @@ public class MultiplexTest {
   private MessageLengthFrameEncoder frameEncoder;
   private SbeMessageHeaderEncoder sbeEncoder;
 
-  private class ConsumerSupplier implements Supplier<MessageConsumer<UUID>> {
+  private class ConsumerSupplier implements Function<UUID, IdentifiableTransportConsumer<UUID>> {
 
     private List<TestReceiver> receivers = new ArrayList<TestReceiver>();
 
-    public MessageConsumer<UUID> get() {
+    public IdentifiableTransportConsumer<UUID> apply(UUID sessionId) {
       TestReceiver receiver = new TestReceiver();
       receivers.add(receiver);
-      return receiver;
+      FixpSession session = createSession(sessionId, receiver);
+      return session.getTransportConsumer();
     }
-
+ 
     public List<TestReceiver> getReceivers() {
       return receivers;
+    }
+    
+    private FixpSession createSession(UUID sessionId, MessageConsumer<UUID> consumer) {
+      FixpSession session = FixpSession.builder().withReactor(serverEngine.getReactor())
+          .withTransport(serverTransport, true)
+          .withBufferSupplier(new SingleBufferSupplier(
+              ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
+          .withMessageConsumer(consumer).withOutboundFlow(FlowType.IDEMPOTENT)
+          .withSessionId(sessionId).asServer().build();
+
+      session.open().handle((s, error) -> {
+        if (error instanceof Exception) {
+          exceptionConsumer.accept((Exception) error);
+        }
+        return s;
+      });
+      return session;
     }
   }
 

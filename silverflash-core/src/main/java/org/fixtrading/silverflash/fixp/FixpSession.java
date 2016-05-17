@@ -674,7 +674,7 @@ public class FixpSession implements Session<UUID>, RecoverableSender {
     return transport;
   }
 
-  protected IdentifiableTransportConsumer<UUID> getTransportConsumer() {
+  public IdentifiableTransportConsumer<UUID> getTransportConsumer() {
     return this.transportConsumer;
   }
 

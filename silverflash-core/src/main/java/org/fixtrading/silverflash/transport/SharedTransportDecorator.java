@@ -66,7 +66,6 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
     private ExceptionConsumer exceptionHandler;
     private FrameSpliterator frameSpliter;
     private Function<ByteBuffer, T> messageIdentifier;
-    private Consumer<T> newSessionConsumer;
     private Transport transport;
 
     /**
@@ -116,11 +115,6 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
       return (B) this;
     }
 
-    public B withNewSessionConsumer(Consumer<T> newSessionConsumer) {
-      this.newSessionConsumer = newSessionConsumer;
-      return (B) this;
-    }
-
     /*
      * Provide a Transport
      * 
@@ -135,30 +129,6 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
   }
 
 
-  protected static class ConsumerWrapper {
-    private final Supplier<ByteBuffer> buffers;
-    private final TransportConsumer consumer;
-
-    public ConsumerWrapper(Supplier<ByteBuffer> buffers, TransportConsumer consumer) {
-      this.buffers = buffers;
-      this.consumer = consumer;
-    }
-
-    /**
-     * @return the buffers
-     */
-    public Supplier<ByteBuffer> getBuffers() {
-      return buffers;
-    }
-
-    /**
-     * @return the consumer
-     */
-    public TransportConsumer getConsumer() {
-      return consumer;
-    }
-  }
-
   @SuppressWarnings("rawtypes")
   public static Builder builder() {
     return new Builder();
@@ -167,7 +137,7 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
 
   private final BufferSupplier buffers;
 
-  private final Map<T, ConsumerWrapper> consumerMap = new ConcurrentHashMap<>();
+  private final Map<T, TransportConsumer> consumerMap = new ConcurrentHashMap<>();
   private final AtomicBoolean criticalSection = new AtomicBoolean();
   private FrameSpliterator frameSpliter;
   protected Function<ByteBuffer, T> messageIdentifier;
@@ -188,9 +158,9 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
         lastId = id;
       }
       if (lastId != null) {
-        ConsumerWrapper wrapper = getConsumerWrapper(lastId);
-        if (wrapper != null) {
-          wrapper.getConsumer().accept(buffer);
+        TransportConsumer consumer = getConsumer(lastId);
+        if (consumer != null) {
+          consumer.accept(buffer);
         }
       }
     }
@@ -201,8 +171,6 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
 
   protected ExceptionConsumer exceptionConsumer = System.err::println;
 
-  protected final Consumer<T> newSessionConsumer;
-
   protected SharedTransportDecorator(Builder<T, ?, ?> builder) {
     Objects.requireNonNull(builder.transport);
     Objects.requireNonNull(builder.buffers);
@@ -211,7 +179,6 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
     this.transport = builder.transport;
     this.buffers = builder.buffers;
     this.messageIdentifier = builder.messageIdentifier;
-    this.newSessionConsumer = builder.newSessionConsumer;
     if (builder.exceptionHandler != null) {
       this.exceptionConsumer = builder.exceptionHandler;
     }
@@ -257,7 +224,7 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
    * @see org.fixtrading.silverflash.transport.TransportConsumer#disconnected()
    */
   public void disconnected() {
-    consumerMap.forEach((t, u) -> u.consumer.disconnected());
+    consumerMap.forEach((t, u) -> u.disconnected());
   }
 
   /*
@@ -293,7 +260,7 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
   
   public CompletableFuture<? extends Transport> open(BufferSupplier buffers, IdentifiableTransportConsumer<T> consumer) {
     final T sessionId = consumer.getSessionId();
-    consumerMap.put(sessionId, new ConsumerWrapper(buffers, consumer));
+    addSession(sessionId, consumer);
     CompletableFuture<? extends Transport> future = openUnderlyingTransport();
     consumer.connected();
     return future;
@@ -366,7 +333,7 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
    * @param id identifier
    * @return message consumer
    */
-  protected ConsumerWrapper getConsumerWrapper(T id) {
+  protected TransportConsumer getConsumer(T id) {
     return consumerMap.get(id);
   }
 
@@ -387,11 +354,15 @@ public class SharedTransportDecorator<T> implements Transport, IdentifiableTrans
   protected void open(Supplier<ByteBuffer> buffers, TransportConsumer consumer, T sessionId)
       throws IOException, InterruptedException, ExecutionException {
     boolean firstOpen = consumerMap.isEmpty();
-    consumerMap.put(sessionId, new ConsumerWrapper(buffers, consumer));
+    addSession(sessionId, consumer);
     if (firstOpen) {
       openUnderlyingTransport();
     }
     consumer.connected();
+  }
+
+  protected void addSession(T sessionId, TransportConsumer consumer) {
+    consumerMap.put(sessionId, consumer);
   }
 
 }

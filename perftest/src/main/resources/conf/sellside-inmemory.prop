@@ -1,0 +1,9 @@
+# Configuration for SellSide with shared memory transport
+protocol=sharedmemory
+
+# Share a transport between sessions
+multiplexed=true
+
+# Uses a dedicated dispatcher thread
+reactive=false
+clients=2

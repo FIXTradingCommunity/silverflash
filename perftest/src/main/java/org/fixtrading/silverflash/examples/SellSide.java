@@ -18,6 +18,7 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -46,6 +47,7 @@ import org.fixtrading.silverflash.examples.messages.OrdStatus;
 import org.fixtrading.silverflash.examples.messages.OrderCapacity;
 import org.fixtrading.silverflash.examples.messages.Side;
 import org.fixtrading.silverflash.fixp.Engine;
+import org.fixtrading.silverflash.fixp.FixpSession;
 import org.fixtrading.silverflash.fixp.FixpSharedTransportAdaptor;
 import org.fixtrading.silverflash.fixp.auth.SimpleAuthenticator;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
@@ -57,9 +59,12 @@ import org.fixtrading.silverflash.fixp.messages.MessageDecoder.NotAppliedDecoder
 import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.transport.Dispatcher;
+import org.fixtrading.silverflash.transport.IdentifiableTransportConsumer;
 import org.fixtrading.silverflash.transport.SharedMemoryTransport;
 import org.fixtrading.silverflash.transport.TcpAcceptor;
 import org.fixtrading.silverflash.transport.Transport;
+import org.fixtrading.silverflash.transport.TransportConsumer;
+import org.fixtrading.silverflash.transport.UdpTransport;
 
 import uk.co.real_logic.agrona.MutableDirectBuffer;
 import uk.co.real_logic.agrona.concurrent.UnsafeBuffer;
@@ -79,10 +84,35 @@ import uk.co.real_logic.agrona.concurrent.UnsafeBuffer;
  * 
  */
 public class SellSide {
-  private class ConsumerSupplier implements Supplier<MessageConsumer<UUID>> {
+
+  private class ConsumerSupplier implements Supplier<MessageConsumer<UUID>>,
+      Function<UUID, IdentifiableTransportConsumer<UUID>> {
 
     private List<ServerListener> receivers = new ArrayList<>();
 
+    public IdentifiableTransportConsumer<UUID> apply(UUID sessionId) {
+      FixpSession session = createSession(sessionId, get());
+      return session.getTransportConsumer();
+    }
+
+    private FixpSession createSession(UUID sessionId, MessageConsumer<UUID> consumer) {
+      FixpSession session = FixpSession.builder().withReactor(engine.getReactor())
+          .withTransport(sharedTransport, true)
+          .withBufferSupplier(new SingleBufferSupplier(
+              ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
+          .withMessageConsumer(consumer).withOutboundFlow(FlowType.IDEMPOTENT)
+          .withSessionId(sessionId).asServer().build();
+
+      session.open().handle((s, error) -> {
+        if (error instanceof Exception) {
+          exceptionConsumer.accept((Exception) error);
+        }
+        return s;
+      });
+      return session;
+    }
+
+    @Override
     public MessageConsumer<UUID> get() {
       ServerListener receiver = new ServerListener();
       receivers.add(receiver);
@@ -93,6 +123,7 @@ public class SellSide {
       return receivers;
     }
   }
+
 
   private class ServerListener implements MessageConsumer<UUID> {
 
@@ -107,17 +138,16 @@ public class SellSide {
     private final ByteBuffer byteBuffer =
         ByteBuffer.allocateDirect(1420).order(ByteOrder.nativeOrder());
     private final MutableDirectBuffer directBuffer = new UnsafeBuffer(byteBuffer);
+    private MessageFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
     private final SbeMessageHeaderDecoder messageHeaderIn = new SbeMessageHeaderDecoder();
     private final EnterOrderDecoder order = new EnterOrderDecoder();
     private long orderId = 0;
     private OrderStruct orderStruct = new OrderStruct();
+    private SbeMessageHeaderEncoder sbeEncoder = new SbeMessageHeaderEncoder();
     private int serverAccepted = 0;
     private int serverDecodeErrors = 0;
     private int serverReceived = 0;
     private int serverUnknown = 0;
-    private MessageFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
-    private SbeMessageHeaderEncoder sbeEncoder = new SbeMessageHeaderEncoder();
-
 
     public void accept(ByteBuffer inboundBuffer, Session<UUID> session, long seqNo) {
 
@@ -165,11 +195,19 @@ public class SellSide {
       }
     }
 
-    public void printStats() {
-      System.out.println("Total requests received:   " + serverReceived);
-      System.out.println("Requests unknown template: " + serverUnknown);
-      System.out.println("Requests decode errors:    " + serverDecodeErrors);
-      System.out.println("Total responses:  " + serverAccepted);
+    private void decodeNotApplied(ByteBuffer buffer) {
+      Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
+      final Decoder decoder = optDecoder.get();
+      switch (decoder.getMessageType()) {
+        case NOT_APPLIED:
+          NotAppliedDecoder notAppliedDecoder = (NotAppliedDecoder) decoder;
+          long fromSeqNo = notAppliedDecoder.getFromSeqNo();
+          int count = notAppliedDecoder.getCount();
+          System.err.format("Not Applied from seq no %d count %d%n", fromSeqNo, count);
+          break;
+        default:
+          System.err.println("Unexpected application message");
+      }
     }
 
     private boolean decodeOrder(ByteBuffer buffer, OrderStruct orderStruct) {
@@ -192,21 +230,6 @@ public class SellSide {
       order.customerType();
       orderStruct.transactTime = order.transactTime();
       return true;
-    }
-
-    private void decodeNotApplied(ByteBuffer buffer) {
-      Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
-      final Decoder decoder = optDecoder.get();
-      switch (decoder.getMessageType()) {
-        case NOT_APPLIED:
-          NotAppliedDecoder notAppliedDecoder = (NotAppliedDecoder) decoder;
-          long fromSeqNo = notAppliedDecoder.getFromSeqNo();
-          int count = notAppliedDecoder.getCount();
-          System.err.format("Not Applied from seq no %d count %d%n", fromSeqNo, count);
-          break;
-        default:
-          System.err.println("Unexpected application message");
-      }
     }
 
     private void encodeAccept(OrderStruct orderStruct, MutableDirectBuffer directBuffer,
@@ -250,6 +273,13 @@ public class SellSide {
       frameEncoder.encodeFrameTrailer();
     }
 
+    public void printStats() {
+      System.out.println("Total requests received:   " + serverReceived);
+      System.out.println("Requests unknown template: " + serverUnknown);
+      System.out.println("Requests decode errors:    " + serverDecodeErrors);
+      System.out.println("Total responses:  " + serverAccepted);
+    }
+
   }
 
   public static final String CSET_MAX_CORE = "maxcore";
@@ -257,16 +287,17 @@ public class SellSide {
   public static final String LOCAL_HOST_KEY = "localhost";
   public static final String LOCAL_PORT_KEY = "localport";
   public static final String MULTIPLEXED_KEY = "multiplexed";
-  public static final String NUMBER_OF_CLIENTS = "clients";
+  public static final String NUMBER_OF_CLIENTS_KEY = "clients";
   public static final String PROTOCOL_KEY = "protocol";
   public static final String PROTOCOL_SHARED_MEMORY = "sharedmemory";
   public static final String PROTOCOL_SSL = "ssl";
   public static final String PROTOCOL_TCP = "tcp";
   public static final String PROTOCOL_UDP = "udp";
+  public static final String REACTIVE_TRANSPORT_KEY = "reactive";
+  public static final String REMOTE_HOST_KEY = "remotehost";
+  public static final String REMOTE_PORT_KEY = "remoteport";
   public static final String SERVER_FLOW_RECOVERABLE_KEY = "recoverable";
-
   public static final String SERVER_FLOW_SEQUENCED_KEY = "sequenced";
-
   public static final String SERVER_KEEPALIVE_INTERVAL_KEY = "heartbeatInterval";
 
   private static Properties loadProperties(String fileName)
@@ -307,41 +338,56 @@ public class SellSide {
 
   private static Properties setDefaultProperties() {
     Properties defaults = new Properties();
-    defaults.setProperty(SERVER_FLOW_RECOVERABLE_KEY, "true");
-    defaults.setProperty(SERVER_FLOW_SEQUENCED_KEY, "true");
-    defaults.setProperty(PROTOCOL_KEY, PROTOCOL_TCP);
-    defaults.setProperty(MULTIPLEXED_KEY, "false");
-    defaults.setProperty(LOCAL_HOST_KEY, LOCAL_HOST_KEY);
-    defaults.setProperty(LOCAL_PORT_KEY, "6869");
-    defaults.setProperty(SERVER_KEEPALIVE_INTERVAL_KEY, "1000");
-    defaults.setProperty(NUMBER_OF_CLIENTS, "1");
     defaults.setProperty(CSET_MIN_CORE, "0");
     defaults.setProperty(CSET_MAX_CORE, "7");
+    defaults.setProperty(LOCAL_HOST_KEY, LOCAL_HOST_KEY);
+    defaults.setProperty(LOCAL_PORT_KEY, "6801");
+    defaults.setProperty(MULTIPLEXED_KEY, "false");
+    defaults.setProperty(NUMBER_OF_CLIENTS_KEY, "1");
+    defaults.setProperty(PROTOCOL_KEY, PROTOCOL_TCP);
+    defaults.setProperty(REACTIVE_TRANSPORT_KEY, "true");
+    defaults.setProperty(REMOTE_HOST_KEY, "localhost");
+    defaults.setProperty(REMOTE_PORT_KEY, "6901");
+    defaults.setProperty(SERVER_FLOW_RECOVERABLE_KEY, "true");
+    defaults.setProperty(SERVER_FLOW_SEQUENCED_KEY, "true");
+    defaults.setProperty(SERVER_KEEPALIVE_INTERVAL_KEY, "1000");
     return defaults;
   }
 
   private final ConsumerSupplier consumerSupplier = new ConsumerSupplier();
-
   private Engine engine;
   private ExceptionConsumer exceptionConsumer = ex -> System.err.println(ex);
-
   private final MessageDecoder messageDecoder = new MessageDecoder();
-
   private final Properties props;
 
   private final SessionConfigurationService serverConfig = new SessionConfigurationService() {
 
-    public byte[]getCredentials(){return null;}
+    public byte[] getCredentials() {
+      return null;
+    }
 
-  public int getKeepaliveInterval(){return Integer.parseInt(props.getProperty(SERVER_KEEPALIVE_INTERVAL_KEY));}
+    public int getKeepaliveInterval() {
+      return Integer.parseInt(props.getProperty(SERVER_KEEPALIVE_INTERVAL_KEY));
+    }
 
-  @Override public boolean isOutboundFlowRecoverable(){String property=props.getProperty(SERVER_FLOW_RECOVERABLE_KEY);return Boolean.parseBoolean(property);}
+    @Override
+    public boolean isOutboundFlowRecoverable() {
+      String property = props.getProperty(SERVER_FLOW_RECOVERABLE_KEY);
+      return Boolean.parseBoolean(property);
+    }
 
-  public boolean isOutboundFlowSequenced(){String property=props.getProperty(SERVER_FLOW_SEQUENCED_KEY);return Boolean.parseBoolean(property);}
+    public boolean isOutboundFlowSequenced() {
+      String property = props.getProperty(SERVER_FLOW_SEQUENCED_KEY);
+      return Boolean.parseBoolean(property);
+    }
 
-  public boolean isTransportMultiplexed(){return Boolean.parseBoolean(props.getProperty(MULTIPLEXED_KEY));}
+    public boolean isTransportMultiplexed() {
+      return Boolean.parseBoolean(props.getProperty(MULTIPLEXED_KEY));
+    }
 
   };
+
+  private List<Session<UUID>> serverSessions = new ArrayList<>();
   private FixpSharedTransportAdaptor sharedTransport = null;
   private TcpAcceptor tcpAcceptor = null;
 
@@ -364,17 +410,118 @@ public class SellSide {
     this.props.putAll(props);
   }
 
-  private Transport createRawTransport(String protocol) throws IOException {
+  private Transport createMultiplexedTransport() throws Exception {
+    if (sharedTransport == null) {
+      sharedTransport = FixpSharedTransportAdaptor.builder().withReactor(engine.getReactor())
+          .withTransport(createRawTransport(0)).withMessageConsumerSupplier(consumerSupplier)
+          .withBufferSupplier(new SingleBufferSupplier(
+              ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
+          .withFlowType(FlowType.IDEMPOTENT).build();
+
+      sharedTransport.openUnderlyingTransport();
+    }
+    return sharedTransport;
+  }
+
+  private TransportConsumer createMultiplexedTransport(Transport rawTransport) throws Exception {
+    if (sharedTransport == null) {
+      sharedTransport = FixpSharedTransportAdaptor.builder().withReactor(engine.getReactor())
+          .withTransport(rawTransport).withMessageConsumerSupplier(consumerSupplier)
+          .withBufferSupplier(new SingleBufferSupplier(
+              ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
+          .withFlowType(FlowType.IDEMPOTENT).build();
+
+      sharedTransport.openUnderlyingTransport();
+    }
+    return sharedTransport;
+  }
+
+  private Transport createRawTransport(int sessionIndex) throws Exception {
+    String protocol = props.getProperty(PROTOCOL_KEY);
+    boolean isReactive = Boolean.getBoolean(props.getProperty(REACTIVE_TRANSPORT_KEY));
     Transport transport;
     switch (protocol) {
       case PROTOCOL_SHARED_MEMORY:
         transport =
             new SharedMemoryTransport(false, true, 1, new Dispatcher(engine.getThreadFactory()));
         break;
+      case PROTOCOL_UDP: {
+        String remotehost = props.getProperty(REMOTE_HOST_KEY);
+        int remoteport = Integer.parseInt(props.getProperty(REMOTE_PORT_KEY)) + sessionIndex;
+        SocketAddress remoteAddress = null;
+        if (remotehost != null) {
+          remoteAddress = new InetSocketAddress(remotehost, remoteport);
+        }
+        String localhost = props.getProperty(LOCAL_HOST_KEY);
+        int localport = Integer.parseInt(props.getProperty(LOCAL_PORT_KEY)) + sessionIndex;
+        SocketAddress localAddress = null;
+        if (remotehost != null) {
+          localAddress = new InetSocketAddress(localhost, localport);
+        }
+        if (isReactive) {
+          transport =
+              new UdpTransport(engine.getIOReactor().getSelector(), remoteAddress, localAddress);
+        } else {
+          transport = new UdpTransport(new Dispatcher(engine.getThreadFactory()), remoteAddress,
+              localAddress);
+        }
+      }
+        break;
       default:
         throw new IOException("Unsupported protocol");
     }
     return transport;
+  }
+
+  private void createSharedTcpAcceptor()
+      throws Exception, InterruptedException, ExecutionException {
+    final String localhost = props.getProperty(LOCAL_HOST_KEY);
+    int localport = Integer.parseInt(props.getProperty(LOCAL_PORT_KEY));
+    final InetSocketAddress serverAddress = new InetSocketAddress(localhost, localport);
+
+    Function<Transport, TransportConsumer> clientAcceptor = serverTransport -> {
+      try {
+        return createMultiplexedTransport(serverTransport);
+      } catch (Exception e) {
+        exceptionConsumer.accept(e);
+        return null;
+      }
+    };
+
+    tcpAcceptor =
+        new TcpAcceptor(engine.getIOReactor().getSelector(), serverAddress, clientAcceptor);
+    tcpAcceptor.open().get();
+    System.out.format("Listening for connections on address %s\n", serverAddress);
+  }
+
+  private void createTcpAcceptor() throws Exception, InterruptedException, ExecutionException {
+    final String localhost = props.getProperty(LOCAL_HOST_KEY);
+    int localport = Integer.parseInt(props.getProperty(LOCAL_PORT_KEY));
+    final InetSocketAddress serverAddress = new InetSocketAddress(localhost, localport);
+
+    FixpSessionFactory fixpSessionFactory =
+        new FixpSessionFactory(engine.getReactor(), serverConfig.getKeepaliveInterval(), false);
+
+    Function<Transport, Session<UUID>> clientAcceptor = serverTransport -> {
+      int keepaliveInterval;
+      Session<UUID> serverSession = fixpSessionFactory.createServerSession(serverTransport,
+          new SingleBufferSupplier(
+              ByteBuffer.allocateDirect(16 * 1024).order(ByteOrder.nativeOrder())),
+          consumerSupplier.get(), FlowType.IDEMPOTENT);
+
+      try {
+        serverSession.open().get(1000, TimeUnit.MILLISECONDS);
+      } catch (InterruptedException | ExecutionException | TimeoutException e) {
+        exceptionConsumer.accept(e);
+      }
+
+      return serverSession;
+    };
+
+    tcpAcceptor =
+        new TcpAcceptor(engine.getIOReactor().getSelector(), serverAddress, clientAcceptor);
+    tcpAcceptor.open().get();
+    System.out.format("Listening for connections on address %s\n", serverAddress);
   }
 
   public void init() throws Exception {
@@ -393,50 +540,34 @@ public class SellSide {
     }
 
     boolean isMultiplexed = serverConfig.isTransportMultiplexed();
-
-    FixpSessionFactory fixpSessionFactory = new FixpSessionFactory(engine.getReactor(),
-        serverConfig.getKeepaliveInterval(), isMultiplexed);
-
     String protocol = props.getProperty(PROTOCOL_KEY);
 
-    if (isMultiplexed) {
-      if (sharedTransport == null) {
-        sharedTransport = FixpSharedTransportAdaptor.builder().withReactor(engine.getReactor())
-            .withTransport(createRawTransport(protocol))
-            .withMessageConsumerSupplier(consumerSupplier)
-            .withBufferSupplier(new SingleBufferSupplier(
-                ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
-            .withFlowType(FlowType.IDEMPOTENT).build();
-
-        sharedTransport.openUnderlyingTransport();
+    if (protocol.equals(PROTOCOL_TCP)) {
+      if (isMultiplexed) {
+        createSharedTcpAcceptor();
+      } else {
+        createTcpAcceptor();
       }
-    } else if (protocol.equals(PROTOCOL_TCP)) {
-      final String localhost = props.getProperty(LOCAL_HOST_KEY);
-      int localport = Integer.parseInt(props.getProperty(LOCAL_PORT_KEY));
-      final InetSocketAddress serverAddress = new InetSocketAddress(localhost, localport);
+    } else {
+      FixpSessionFactory fixpSessionFactory = new FixpSessionFactory(engine.getReactor(),
+          serverConfig.getKeepaliveInterval(), isMultiplexed);
 
-      Function<Transport, Session<UUID>> clientAcceptor = serverTransport -> {
-        int keepaliveInterval;
-        Session<UUID> serverSession = fixpSessionFactory.createServerSession(serverTransport,
-            new SingleBufferSupplier(
-                ByteBuffer.allocateDirect(16 * 1024).order(ByteOrder.nativeOrder())),
-            consumerSupplier.get(), FlowType.IDEMPOTENT);
-
-        try {
-          serverSession.open().get(1000, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException | ExecutionException | TimeoutException e) {
-          exceptionConsumer.accept(e);
+      int numberOfClients = Integer.parseInt(props.getProperty(NUMBER_OF_CLIENTS_KEY));
+      Transport transport;
+      for (int i = 0; i < numberOfClients; ++i) {
+        if (isMultiplexed) {
+          transport = createMultiplexedTransport();
+        } else {
+          transport = createRawTransport(i);
+          Session<UUID> serverSession = fixpSessionFactory.createServerSession(transport,
+              new SingleBufferSupplier(
+                  ByteBuffer.allocateDirect(16 * 1024).order(ByteOrder.nativeOrder())),
+              new ServerListener(), FlowType.IDEMPOTENT);
+          serverSession.open().get();
+          serverSessions.add(serverSession);
         }
-
-        return serverSession;
-      };
-
-      tcpAcceptor =
-          new TcpAcceptor(engine.getIOReactor().getSelector(), serverAddress, clientAcceptor);
-      tcpAcceptor.open().get();
-      System.out.format("Listening for connections on address %s\n", serverAddress);
+      }
     }
-
   }
 
   public void shutdown() {

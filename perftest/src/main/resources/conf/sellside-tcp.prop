@@ -1,0 +1,10 @@
+# Configuration for SellSide with TCP transport
+# Uses default listener port.
+protocol=tcp
+multiplexed=false
+
+# Uses a dedicated dispatcher thread for each session.
+# Beyond a certain number of sessions (to be determined by testing),
+# an IOReactor event demultiplexor would be beneficial.
+reactive=false
+clients=2

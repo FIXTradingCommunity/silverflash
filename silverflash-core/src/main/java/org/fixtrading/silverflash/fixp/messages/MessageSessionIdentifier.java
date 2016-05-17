@@ -46,7 +46,6 @@ public class MessageSessionIdentifier implements Function<ByteBuffer, UUID> {
 
   private final MessageDecoder decoder = new MessageDecoder();
   private final byte[] sessionId = new byte[16];
-  private Consumer<UUID> newSessionConsumer;
 
   /*
    * (non-Javadoc)
@@ -54,8 +53,8 @@ public class MessageSessionIdentifier implements Function<ByteBuffer, UUID> {
    * @see java.util.function.Function#apply(java.lang.Object)
    */
   public UUID apply(ByteBuffer buffer) {
+    UUID uuid = null;
     int pos = buffer.position();
-    boolean newSession = false;
     try {
       Optional<Decoder> optDecoder = decoder.wrap(buffer, pos);
       if (optDecoder.isPresent()) {
@@ -65,12 +64,10 @@ public class MessageSessionIdentifier implements Function<ByteBuffer, UUID> {
           case NOT_APPLIED:
           case SEQUENCE:
           case UNSEQUENCED_HEARTBEAT:
-            // Invalid on a multiplexed transport or application
-            // messages
-            return null;
+            // Returns null.
+            break;
           case NEGOTIATE:
             ((NegotiateDecoder) decoder).getSessionId(sessionId, 0);
-            newSession = true;
             break;
           case NEGOTIATION_RESPONSE:
             ((NegotiationResponseDecoder) decoder).getSessionId(sessionId, 0);
@@ -106,21 +103,12 @@ public class MessageSessionIdentifier implements Function<ByteBuffer, UUID> {
           default:
             return null;
         }
-        UUID uuid = SessionId.UUIDFromBytes(sessionId);
-        if (newSession && (newSessionConsumer != null)) {
-          newSessionConsumer.accept(uuid);
-        }
-        return uuid;
+        uuid =  SessionId.UUIDFromBytes(sessionId);
       }
-      return null;
+      return uuid;
     } finally {
       // Idempotent for buffer position
       buffer.position(pos);
     }
-  }
-
-  public MessageSessionIdentifier withNewSessionConsumer(Consumer<UUID> newSessionConsumer) {
-    this.newSessionConsumer = newSessionConsumer;
-    return this;
   }
 }

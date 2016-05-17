@@ -34,5 +34,9 @@ public interface SessionConfigurationService {
 
   byte[] getCredentials();
 
+  /**
+   * Multiplex multiple FIXP sessions on a single transport
+   * @return Returns {@code true} if transport is multiplexed
+   */
   boolean isTransportMultiplexed();
 }
