@@ -97,11 +97,11 @@ public class MessageDecoder {
     }
 
     public long getRequestTimestamp() {
-      return buffer.getLong(offset + FIRST_FIELD_OFFSET);
+      return buffer.getLong(offset + FIRST_FIELD_OFFSET + 16);
     }
 
     public EstablishDecoder getSessionId(byte[] dest, int destOffset) {
-      buffer.position(offset + FIRST_FIELD_OFFSET + 8);
+      buffer.position(offset + FIRST_FIELD_OFFSET);
       buffer.get(dest, destOffset, 16);
       return this;
     }
@@ -188,7 +188,7 @@ public class MessageDecoder {
   public final class FinishedSendingDecoder extends Decoder {
 
     public int getBlockLength() {
-      return 17;
+      return 24;
     }
 
     public long getLastSeqNo() {
@@ -229,20 +229,20 @@ public class MessageDecoder {
     }
 
     public NegotiateDecoder getSessionId(byte[] dest, int destOffset) {
-      buffer.position(offset + FIRST_FIELD_OFFSET + 8);
+      buffer.position(offset + FIRST_FIELD_OFFSET);
       buffer.get(dest, destOffset, 16);
       return this;
     }
 
     public long getTimestamp() {
-      return buffer.getLong(offset + FIRST_FIELD_OFFSET);
+      return buffer.getLong(offset + FIRST_FIELD_OFFSET + 16);
     }
   }
 
   public final class NegotiationRejectDecoder extends Decoder {
 
     public int getBlockLength() {
-      return 24;
+      return 25;
     }
 
     public NegotiationReject getCode() {
@@ -260,11 +260,11 @@ public class MessageDecoder {
     }
 
     public long getRequestTimestamp() {
-      return buffer.getLong(offset + FIRST_FIELD_OFFSET);
+      return buffer.getLong(offset + FIRST_FIELD_OFFSET + 16);
     }
 
     public NegotiationRejectDecoder getSessionId(byte[] dest, int destOffset) {
-      buffer.position(offset + FIRST_FIELD_OFFSET + 8);
+      buffer.position(offset + FIRST_FIELD_OFFSET);
       buffer.get(dest, destOffset, 16);
       return this;
     }
@@ -276,12 +276,18 @@ public class MessageDecoder {
       return 25;
     }
 
+    public NegotiationResponseDecoder getCredentials(byte[] dest, int destOffset) {
+      short variableLength = buffer.getShort(offset + FIRST_FIELD_OFFSET + getBlockLength());
+      buffer.position(offset + FIRST_FIELD_OFFSET + getBlockLength() + 2);
+      buffer.get(dest, destOffset, variableLength);
+      return this;
+    }
     public MessageType getMessageType() {
       return MessageType.NEGOTIATION_RESPONSE;
     }
 
     public long getRequestTimestamp() {
-      return buffer.getLong(offset + FIRST_FIELD_OFFSET);
+      return buffer.getLong(offset + FIRST_FIELD_OFFSET + 16);
     }
 
     public FlowType getServerFlow() {
@@ -289,7 +295,7 @@ public class MessageDecoder {
     }
 
     public NegotiationResponseDecoder getSessionId(byte[] dest, int destOffset) {
-      buffer.position(offset + FIRST_FIELD_OFFSET + 8);
+      buffer.position(offset + FIRST_FIELD_OFFSET);
       buffer.get(dest, destOffset, 16);
       return this;
     }
@@ -321,11 +327,11 @@ public class MessageDecoder {
     }
 
     public long getNextSeqNo() {
-      return buffer.getLong(offset + FIRST_FIELD_OFFSET + 16);
+      return buffer.getLong(offset + FIRST_FIELD_OFFSET + 24);
     }
 
     public long getRequestTimestamp() {
-      return buffer.getLong(offset + FIRST_FIELD_OFFSET + 24);
+      return buffer.getLong(offset + FIRST_FIELD_OFFSET + 16);
     }
 
     public RetransmissionDecoder getSessionId(byte[] dest, int destOffset) {
@@ -406,7 +412,7 @@ public class MessageDecoder {
   public final class TopicDecoder extends Decoder {
 
     public int getBlockLength() {
-      return 17;
+      return 21;
     }
 
     public TopicDecoder getClassfication(byte[] dest, int destOffset) {
@@ -418,6 +424,10 @@ public class MessageDecoder {
 
     public FlowType getFlow() {
       return FlowType.getFlowType(buffer.get(offset + FIRST_FIELD_OFFSET + 16));
+    }
+
+    public int getKeepaliveInterval() {
+      return buffer.getInt(offset + FIRST_FIELD_OFFSET + 17);
     }
 
     public MessageType getMessageType() {

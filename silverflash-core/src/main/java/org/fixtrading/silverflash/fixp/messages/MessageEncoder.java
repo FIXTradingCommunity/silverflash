@@ -145,14 +145,14 @@ public class MessageEncoder {
     }
 
     public EstablishEncoder setSessionId(byte[] uuid) {
-      buffer.position(offset + FIRST_FIELD_OFFSET + 8);
+      buffer.position(offset + FIRST_FIELD_OFFSET);
       buffer.put(uuid, 0, 16);
       buffer.position(offset + getMessageLength());
       return this;
     }
 
     public EstablishEncoder setTimestamp(long nanotime) {
-      buffer.putLong(offset + FIRST_FIELD_OFFSET, nanotime);
+      buffer.putLong(offset + FIRST_FIELD_OFFSET + 16, nanotime);
       return this;
     }
 
@@ -324,13 +324,13 @@ public class MessageEncoder {
     }
 
     public NegotiateEncoder setSessionId(byte[] uuid) {
-      buffer.position(offset + FIRST_FIELD_OFFSET + 8);
+      buffer.position(offset + FIRST_FIELD_OFFSET);
       buffer.put(uuid, 0, 16);
       return this;
     }
 
     public NegotiateEncoder setTimestamp(long nanotime) {
-      buffer.putLong(offset + FIRST_FIELD_OFFSET, nanotime);
+      buffer.putLong(offset + FIRST_FIELD_OFFSET + 16, nanotime);
       return this;
     }
   }
@@ -338,7 +338,7 @@ public class MessageEncoder {
   public static final class NegotiationRejectEncoder extends Encoder {
 
     public int getBlockLength() {
-      return 24;
+      return 25;
     }
 
     @Override
@@ -372,12 +372,12 @@ public class MessageEncoder {
     }
 
     public NegotiationRejectEncoder setRequestTimestamp(long nanotime) {
-      buffer.putLong(offset + FIRST_FIELD_OFFSET, nanotime);
+      buffer.putLong(offset + FIRST_FIELD_OFFSET + 16, nanotime);
       return this;
     }
 
     public NegotiationRejectEncoder setSessionId(byte[] uuid) {
-      buffer.position(offset + FIRST_FIELD_OFFSET + 8);
+      buffer.position(offset + FIRST_FIELD_OFFSET);
       buffer.put(uuid, 0, 16);
       buffer.position(offset + getMessageLength());
       return this;
@@ -390,13 +390,26 @@ public class MessageEncoder {
       return 25;
     }
 
+    protected int resetVariableLength() {
+      return 2;
+    }
+    
     @Override
     MessageType getMessageType() {
       return MessageType.NEGOTIATION_RESPONSE;
     }
-
+    public NegotiationResponseEncoder setCredentials(byte[] credentials) {
+      buffer.putShort(offset + FIRST_FIELD_OFFSET + getBlockLength(), (short) credentials.length);
+      buffer.position(offset + FIRST_FIELD_OFFSET + getBlockLength() + 2);
+      buffer.put(credentials, 0, credentials.length);
+      this.variableLength = credentials.length + 2;
+      frameEncoder.setMessageLength(getMessageLength() + SbeMessageHeaderEncoder.getLength());
+      frameEncoder.encodeFrameTrailer();
+      return this;
+    }
+    
     public NegotiationResponseEncoder setRequestTimestamp(long nanotime) {
-      buffer.putLong(offset + FIRST_FIELD_OFFSET, nanotime);
+      buffer.putLong(offset + FIRST_FIELD_OFFSET + 16, nanotime);
       return this;
     }
 
@@ -407,7 +420,7 @@ public class MessageEncoder {
     }
 
     public NegotiationResponseEncoder setSessionId(byte[] uuid) {
-      buffer.position(offset + FIRST_FIELD_OFFSET + 8);
+      buffer.position(offset + FIRST_FIELD_OFFSET);
       buffer.put(uuid, 0, 16);
       buffer.position(offset + getMessageLength());
       return this;
@@ -455,12 +468,12 @@ public class MessageEncoder {
     }
 
     public RetransmissionEncoder setNextSeqNo(long nextSeqNo) {
-      buffer.putLong(offset + FIRST_FIELD_OFFSET + 16, nextSeqNo);
+      buffer.putLong(offset + FIRST_FIELD_OFFSET + 24, nextSeqNo);
       return this;
     }
 
     public RetransmissionEncoder setRequestTimestamp(long nanotime) {
-      buffer.putLong(offset + FIRST_FIELD_OFFSET + 24, nanotime);
+      buffer.putLong(offset + FIRST_FIELD_OFFSET + 16, nanotime);
       return this;
     }
 
@@ -568,7 +581,7 @@ public class MessageEncoder {
   public static final class TopicEncoder extends Encoder {
 
     public int getBlockLength() {
-      return 17;
+      return 21;
     }
 
     @Override
@@ -593,6 +606,11 @@ public class MessageEncoder {
 
     public TopicEncoder setFlow(FlowType flowType) {
       buffer.put(offset + FIRST_FIELD_OFFSET + 16, flowType.getCode());
+      return this;
+    }
+    
+    public TopicEncoder setKeepaliveInterval(int deltaMillisecs) {
+      buffer.putInt(offset + FIRST_FIELD_OFFSET + 17, deltaMillisecs);
       return this;
     }
 
