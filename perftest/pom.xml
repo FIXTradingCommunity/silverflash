@@ -16,7 +16,7 @@
 		</dependency>
 		<dependency>
 			<groupId>uk.co.real-logic</groupId>
-			<artifactId>sbe</artifactId>
+			<artifactId>sbe-all</artifactId>
 			<version>${sbe.version}</version>
 		</dependency>
 		<dependency>

@@ -66,8 +66,8 @@ import org.fixtrading.silverflash.transport.Transport;
 import org.fixtrading.silverflash.transport.TransportConsumer;
 import org.fixtrading.silverflash.transport.UdpTransport;
 
-import uk.co.real_logic.agrona.MutableDirectBuffer;
-import uk.co.real_logic.agrona.concurrent.UnsafeBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 
 /**
  * Test order injector

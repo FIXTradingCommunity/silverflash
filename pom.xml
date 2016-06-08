@@ -50,7 +50,7 @@
 		<jna.version>4.2.2</jna.version>
 		<cli.version>1.3.1</cli.version>
 		<disruptor.version>3.3.4</disruptor.version>
-		<sbe.version>1.1.7-RC2</sbe.version>
+		<sbe.version>1.4.1-RC4</sbe.version>
 		<hdrhistogram.version>2.1.8</hdrhistogram.version>
 		<slf4j.version>1.7.21</slf4j.version>
 		<shouldUseIncrementalCompilation>true</shouldUseIncrementalCompilation>
