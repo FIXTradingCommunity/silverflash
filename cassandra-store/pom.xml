@@ -4,7 +4,7 @@
 	<parent>
 		<groupId>org.fixtrading.silverflash</groupId>
 		<artifactId>silverflash-parent</artifactId>
-		<version>1.0.1</version>
+		<version>1.1.1-SNAPSHOT</version>
 	</parent>
 	<artifactId>cassandra-store</artifactId>
 	<name>${project.groupId}:${project.artifactId}</name>
@@ -19,7 +19,7 @@
 		<dependency>
 			<groupId>com.datastax.cassandra</groupId>
 			<artifactId>cassandra-driver-core</artifactId>
-			<version>3.0.1</version>
+			<version>3.0.2</version>
 		</dependency>
 	</dependencies>
 </project>
