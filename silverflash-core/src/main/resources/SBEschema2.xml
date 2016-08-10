@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbe:messageSchema xmlns:sbe="http://fixprotocol.io/2016/sbe"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://fixprotocol.io/2016/sbe sbe.xsd" package="FIXP"
+	id="32001" version="0" byteOrder="littleEndian">
+	<types>
+		<composite name="Object" description="Variable length data, also know as octect string">
+			<type name="length" primitiveType="uint16" semanticType="Length" />
+			<type name="varData" length="0" primitiveType="uint8" semanticType="data" />
+		</composite>
+		<composite name="messageHeader"
+			description="Message identifiers and length of message root">
+			<type name="blockLength" primitiveType="uint16" />
+			<type name="templateId" primitiveType="uint16" />
+			<type name="schemaId" primitiveType="uint16" />
+			<type name="version" primitiveType="uint16" />
+		</composite>
+	</types>
+	<sbe:message name="Event" id="1">
+		<data name="Topic" id="1" type="Object" />
+		<data name="Payload" id="2" type="Object" />
+	</sbe:message>
+</sbe:messageSchema>
