@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,6 @@
  */
 
 /**
- * FIXP message encoding and decoding
+ * FIXP session message encoding and decoding
  */
 package org.fixtrading.silverflash.fixp.messages;

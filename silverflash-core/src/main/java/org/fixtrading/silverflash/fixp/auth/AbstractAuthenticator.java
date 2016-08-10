@@ -1,17 +1,15 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ * Copyright 2015-2016 FIX Protocol Ltd
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations under
+ * the License.
  *
  */
 
@@ -23,17 +21,16 @@ import static org.fixtrading.silverflash.fixp.SessionEventTopics.ToSessionEventT
 
 import java.nio.ByteBuffer;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+import org.agrona.DirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
 import org.fixtrading.silverflash.fixp.SessionId;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.NegotiateDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.NegotiateDecoder;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.Topic;
@@ -48,28 +45,34 @@ abstract class AbstractAuthenticator implements ReactiveAuthenticator<UUID, Byte
 
   private final Receiver authenticateHandler = new Receiver() {
 
+    private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+    private final NegotiateDecoder negotiateDecoder = new NegotiateDecoder();
+    private final DirectBuffer directBuffer = new UnsafeBuffer(new byte[0]);
+
     @Override
     public void accept(ByteBuffer buffer) {
-      Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
-      if (optDecoder.isPresent()) {
-        final Decoder decoder = optDecoder.get();
-        if (decoder.getMessageType() == MessageType.NEGOTIATE) {
-          NegotiateDecoder negotiateDecoder = (NegotiateDecoder) decoder;
+      directBuffer.wrap(buffer);
+      messageHeaderDecoder.wrap(directBuffer, buffer.position());
+      if (messageHeaderDecoder.templateId() == negotiateDecoder.sbeTemplateId() &&
+              messageHeaderDecoder.schemaId() == negotiateDecoder.sbeSchemaId()) {
+        negotiateDecoder.wrap(directBuffer, messageHeaderDecoder.encodedLength(), negotiateDecoder.sbeBlockLength(),
+                negotiateDecoder.sbeSchemaVersion());
+
           byte[] credentials = new byte[128];
-          negotiateDecoder.getCredentials(credentials, 0);
+          negotiateDecoder.getCredentials(credentials, 0, credentials.length);
           byte[] sessionId = new byte[16];
-          negotiateDecoder.getSessionId(sessionId, 0);
+          for (int i=0; i<16; i++) {
+            sessionId[i] = (byte)negotiateDecoder.sessionId(i);
+          }
           UUID uuid = SessionId.UUIDFromBytes(sessionId);
           doAuthenticate(buffer, credentials, sessionId, uuid);
         } else {
           System.err.println("Authenticator: unexpected message type received");
         }
       }
-    }
-  };
+    };
 
   private Topic authenticateTopic;
-  private final MessageDecoder messageDecoder = new MessageDecoder();
   private EventReactor<ByteBuffer> reactor;
   private Subscription serviceAuthenticateSubscription;
 
@@ -82,8 +85,8 @@ abstract class AbstractAuthenticator implements ReactiveAuthenticator<UUID, Byte
     serviceAuthenticateSubscription = reactor.subscribe(authenticateTopic, authenticateHandler);
     if (serviceAuthenticateSubscription == null) {
       CompletableFuture<AbstractAuthenticator> future = new CompletableFuture<>();
-      future.completeExceptionally(new RuntimeException(
-          "Failed to open Authenticator; subscription failed for topic "
+      future.completeExceptionally(
+          new RuntimeException("Failed to open Authenticator; subscription failed for topic "
               + authenticateTopic.toString()));
       return future;
     } else {
@@ -91,13 +94,15 @@ abstract class AbstractAuthenticator implements ReactiveAuthenticator<UUID, Byte
     }
   }
 
-  public ReactiveAuthenticator<UUID, ByteBuffer> withEventReactor(EventReactor<ByteBuffer> reactor) {
+  public ReactiveAuthenticator<UUID, ByteBuffer> withEventReactor(
+      EventReactor<ByteBuffer> reactor) {
     Objects.requireNonNull(reactor);
     this.reactor = reactor;
     return this;
   }
 
-  protected void doAuthenticate(ByteBuffer buffer, byte[] credentials, byte[] sessionId, UUID uuid) {
+  protected void doAuthenticate(ByteBuffer buffer, byte[] credentials, byte[] sessionId,
+      UUID uuid) {
     if (authenticate(uuid, credentials)) {
       onAuthenticated(SessionId.UUIDFromBytes(sessionId), buffer);
     } else {

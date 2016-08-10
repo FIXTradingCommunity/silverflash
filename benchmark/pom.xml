@@ -53,7 +53,7 @@
 		</plugins>
 	</build>
 	<properties>
-		<jmh.version>1.12</jmh.version>
+		<jmh.version>1.13</jmh.version>
 		<shouldUseIncrementalCompilation>false</shouldUseIncrementalCompilation>
 	</properties>
 	<description>Microbenchmarks for FIXP engine implementation</description>

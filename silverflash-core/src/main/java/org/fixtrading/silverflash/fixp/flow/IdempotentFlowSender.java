@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,10 +26,12 @@ import java.nio.ByteOrder;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder.TerminateEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.TerminateEncoder;
 import org.fixtrading.silverflash.fixp.messages.TerminationCode;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
@@ -48,16 +50,19 @@ public class IdempotentFlowSender extends AbstractFlow implements FlowSender, Mu
   public static class Builder<T extends IdempotentFlowSender, B extends FlowBuilder>
       extends AbstractFlow.Builder {
 
-    public IdempotentFlowSender build() {
+     public IdempotentFlowSender build() {
       return new IdempotentFlowSender(this);
     }
+
   }
 
-  @SuppressWarnings({ "rawtypes", "unchecked" })
+  private static final ByteBuffer[] EMPTY = new ByteBuffer[0];
+
   public static  Builder<IdempotentFlowSender, FlowBuilder> builder() {
     return new Builder();
   }
 
+  private final AtomicBoolean criticalSection = new AtomicBoolean();
   private final Receiver heartbeatEvent = t -> {
     try {
       sendHeartbeat();
@@ -71,13 +76,15 @@ public class IdempotentFlowSender extends AbstractFlow implements FlowSender, Mu
       reactor.post(terminatedTopic, t);
     }
   };
-
   private final TimerSchedule heartbeatSchedule;
   private final Subscription heartbeatSubscription;
   private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
-  private static final ByteBuffer[] EMPTY = new ByteBuffer[0];
+  private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
   private final ByteBuffer[] one = new ByteBuffer[1];
-  private final AtomicBoolean criticalSection = new AtomicBoolean();
+  private final ByteBuffer sendBuffer = ByteBuffer.allocateDirect(48)
+      .order(ByteOrder.nativeOrder());
+  private final TerminateEncoder terminateEncoder = new TerminateEncoder();
+  private final MutableDirectBuffer mutableBuffer = new UnsafeBuffer(sendBuffer);
 
   protected IdempotentFlowSender(@SuppressWarnings("rawtypes") Builder builder) {
     super(builder);
@@ -86,6 +93,19 @@ public class IdempotentFlowSender extends AbstractFlow implements FlowSender, Mu
     heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
     heartbeatSchedule = reactor.postAtInterval(heartbeatTopic, ByteBuffer.allocate(0),
         keepaliveInterval);
+  }
+
+  /*
+   * (non-Javadoc)
+   * 
+   * @see org.fixtrading.silverflash.Sequenced#getNextSeqNo()
+   */
+  public long getNextSeqNo() {
+    return sequencer.getNextSeqNo();
+  }
+
+  protected boolean isHeartbeatDue() {
+    return isHeartbeatDue.getAndSet(true);
   }
 
   @Override
@@ -113,32 +133,29 @@ public class IdempotentFlowSender extends AbstractFlow implements FlowSender, Mu
     heartbeatSchedule.cancel();
     heartbeatSubscription.unsubscribe();
 
-    final ByteBuffer terminateBuffer = ByteBuffer.allocateDirect(48).order(ByteOrder.nativeOrder());
-    final TerminateEncoder terminateEncoder = (TerminateEncoder) messageEncoder
-        .wrap(terminateBuffer, 0, MessageType.TERMINATE);
-    terminateEncoder.setSessionId(uuidAsBytes);
-    terminateEncoder.setCode(TerminationCode.FINISHED);
-    terminateEncoder.setReasonNull();
-    transport.write(terminateBuffer);
+    int offset = 0;
+    frameEncoder.wrap(sendBuffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(terminateEncoder.sbeBlockLength())
+        .templateId(terminateEncoder.sbeTemplateId()).schemaId(terminateEncoder.sbeSchemaId())
+        .version(terminateEncoder.sbeSchemaVersion());
+    offset += messageHeaderEncoder.encodedLength();
+    terminateEncoder.wrap(mutableBuffer, offset);
+    for (int i = 0; i < 16; i++) {
+      terminateEncoder.sessionId(i, uuidAsBytes[i]);
+    }
+    terminateEncoder.code(TerminationCode.Finished);
+    frameEncoder.setMessageLength(offset + terminateEncoder.encodedLength());
+    frameEncoder.encodeFrameTrailer();
+
+    transport.write(sendBuffer);
   }
 
   public void sendHeartbeat() throws IOException {
     if (isHeartbeatDue()) {
       send(EMPTY);
     }
-  }
-
-  protected boolean isHeartbeatDue() {
-    return isHeartbeatDue.getAndSet(true);
-  }
-
-  /*
-   * (non-Javadoc)
-   * 
-   * @see org.fixtrading.silverflash.Sequenced#getNextSeqNo()
-   */
-  public long getNextSeqNo() {
-    return sequencer.getNextSeqNo();
   }
 
   /**

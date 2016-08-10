@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,19 +22,15 @@ import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventTyp
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
-
+import org.agrona.DirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.fixp.Establisher;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
 import org.fixtrading.silverflash.fixp.SessionId;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.TopicDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.TopicDecoder;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Topic;
 import org.fixtrading.silverflash.transport.Transport;
@@ -49,13 +45,12 @@ public class MulticastConsumerEstablisher implements Establisher, FlowReceiver, 
 
   private FlowType inboundFlow;
   private int inboundKeepaliveInterval;
-  private final MessageDecoder messageDecoder = new MessageDecoder();
   private final EventReactor<ByteBuffer> reactor;
-  private UUID sessionId;
-  private byte [] topic;
-  private final Transport transport;
+  private String topic;
   private final byte[] uuidAsBytes = new byte[16];
-
+  private final DirectBuffer immutableBuffer = new UnsafeBuffer(new byte[0]);
+  private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+  private final TopicDecoder topicDecoder = new TopicDecoder();
   /**
    * Constructor
    * 
@@ -66,18 +61,20 @@ public class MulticastConsumerEstablisher implements Establisher, FlowReceiver, 
    */
   public MulticastConsumerEstablisher(EventReactor<ByteBuffer> reactor, Transport transport) {
     this.reactor = reactor;
-    this.transport = transport;
   }
 
   @Override
   public void accept(ByteBuffer buffer) {
-    Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
-    if (optDecoder.isPresent()) {
-      final Decoder decoder = optDecoder.get();
-      if (MessageType.TOPIC == decoder.getMessageType()) {
-        onTopic((TopicDecoder) decoder);
+    immutableBuffer.wrap(buffer);
+    int offset = buffer.position();
+    messageHeaderDecoder.wrap(immutableBuffer, offset);
+    offset += messageHeaderDecoder.encodedLength();
+    if (messageHeaderDecoder.schemaId() == topicDecoder.sbeSchemaId()
+        && messageHeaderDecoder.templateId() == topicDecoder.sbeTemplateId()) {
+      topicDecoder.wrap(immutableBuffer, offset,
+          topicDecoder.sbeBlockLength(), topicDecoder.sbeSchemaVersion());
+        onTopic(topicDecoder, buffer);
       }
-    }
   }
 
   public void complete() {
@@ -98,13 +95,13 @@ public class MulticastConsumerEstablisher implements Establisher, FlowReceiver, 
    * 
    * @see org.fixtrading.silverflash.Establisher#getInboundKeepaliveInterval()
    */
-  public int getInboundKeepaliveInterval() {
+  public long getInboundKeepaliveInterval() {
     return inboundKeepaliveInterval;
   }
 
   @Override
   public FlowType getOutboundFlow() {
-    return FlowType.NONE;
+    return FlowType.None;
   }
 
   /*
@@ -112,7 +109,7 @@ public class MulticastConsumerEstablisher implements Establisher, FlowReceiver, 
    * 
    * @see org.fixtrading.silverflash.Establisher#getOutboundKeepaliveInterval()
    */
-  public int getOutboundKeepaliveInterval() {
+  public long getOutboundKeepaliveInterval() {
     return 0;
   }
 
@@ -130,19 +127,16 @@ public class MulticastConsumerEstablisher implements Establisher, FlowReceiver, 
     return false;
   }
 
-  void onTopic(TopicDecoder topicDecoder) {
-    final ByteBuffer buffer = topicDecoder.getBuffer();
-    buffer.mark();
-    topicDecoder.getSessionId(this.uuidAsBytes, 0);
-    this.sessionId = SessionId.UUIDFromBytes(uuidAsBytes);
-    FlowType aFlow = topicDecoder.getFlow();
-    byte[] aTopic = new byte[topic.length];
-    topicDecoder.getClassfication(aTopic, 0);
-    if (Arrays.equals(topic, aTopic)) {
+  void onTopic(TopicDecoder topicDecoder, ByteBuffer buffer) {
+    for (int i = 0; i < 16; i++) {
+      uuidAsBytes[i] = (byte) topicDecoder.sessionId(i);
+    }
+    SessionId.UUIDFromBytes(uuidAsBytes);
+    FlowType aFlow = topicDecoder.flow();
+    String aTopic = topicDecoder.classification();
+    if (topic.equals(aTopic)) {
       inboundFlow = aFlow;
-      Topic readyTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, new String(topic));
-      buffer.reset();
-      ByteBuffer bufferCopy = buffer.duplicate();
+      Topic readyTopic = SessionEventTopics.getTopic(MULTICAST_TOPIC, topic);
       reactor.post(readyTopic, buffer);
     }
   }
@@ -166,7 +160,7 @@ public class MulticastConsumerEstablisher implements Establisher, FlowReceiver, 
    */
   public MulticastConsumerEstablisher withTopic(String topic) {
     Objects.requireNonNull(topic);
-    this.topic = topic.getBytes();
+    this.topic = topic;
     return this;
   }
   

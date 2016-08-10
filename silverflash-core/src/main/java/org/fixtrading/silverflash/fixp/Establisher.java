@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ public interface Establisher {
   /**
    * @return expected inbound heartbeat interval (milliseconds)
    */
-  int getInboundKeepaliveInterval();
+  long getInboundKeepaliveInterval();
 
   /**
    * @return type of the outbound flow of a Session
@@ -59,7 +59,7 @@ public interface Establisher {
   /**
    * @return outbound heartbeat interval (milliseconds)
    */
-  int getOutboundKeepaliveInterval();
+  long getOutboundKeepaliveInterval();
 
   /**
    * @return Session ID serialized to a byte array

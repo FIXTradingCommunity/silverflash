@@ -21,8 +21,11 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.function.Consumer;
 
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
 import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
@@ -48,10 +51,13 @@ public class FrameSpliteratorBenchmark {
   private final int schemaId = 66;
   private final int templateId = 77;
 
+  private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
+  private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+  private MutableDirectBuffer mutableBuffer = new UnsafeBuffer(new byte[0]);
+  private final DirectBuffer immutableBuffer = new UnsafeBuffer(new byte[0]);
+
   private MessageLengthFrameSpliterator spliterator;
-  private SbeMessageHeaderDecoder sbeHeaderEncoder;
   private MessageFrameEncoder frameEncoder;
-  private SbeMessageHeaderEncoder sbeEncoder;
   private ByteBuffer buffer;
 
   @AuxCounters
@@ -71,20 +77,18 @@ public class FrameSpliteratorBenchmark {
   public void initTestEnvironment() throws Exception {
     buffer = ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder());
     ByteBuffer message =
-        ByteBuffer.allocate(messageLength - SbeMessageHeaderDecoder.getLength()).order(
+        ByteBuffer.allocate(messageLength - MessageHeaderDecoder.ENCODED_LENGTH).order(
             ByteOrder.nativeOrder());
     
-    sbeHeaderEncoder = new SbeMessageHeaderDecoder();
     spliterator = new MessageLengthFrameSpliterator();
     frameEncoder = new MessageLengthFrameEncoder();
-    sbeEncoder = new SbeMessageHeaderEncoder();
 
     for (int i = 0; i < message.limit(); i++) {
       message.put((byte) i);
     }
 
     for (int i = 0; i < numberOfMessages; i++) {
-      encodeApplicationMessage(buffer, message);
+      encodeApplicationMessageWithFrame(buffer, message);
     }
   }
 
@@ -94,9 +98,11 @@ public class FrameSpliteratorBenchmark {
     spliterator.wrap(buffer);
 
     while (spliterator.tryAdvance((Consumer<ByteBuffer>) message -> {
-      sbeHeaderEncoder.wrap(buffer, message.position());
+      immutableBuffer.wrap(buffer);
+      int offset = buffer.position();
+      messageHeaderDecoder.wrap(immutableBuffer, offset);
 
-      if (templateId == sbeHeaderEncoder.getTemplateId()) {
+      if (templateId == messageHeaderDecoder.templateId()) {
         counters.succeeded++;
       } else {
         counters.failed++;
@@ -105,27 +111,22 @@ public class FrameSpliteratorBenchmark {
     }));
   }
 
-  private void encodeApplicationMessage(ByteBuffer buf, ByteBuffer message) {
-    message.rewind();
-    
-    frameEncoder.wrap(buf);
-    frameEncoder.encodeFrameHeader();
-    int messageLength = message.remaining();
-    sbeEncoder.wrap(buf, frameEncoder.getHeaderLength()).setBlockLength(message.remaining()).setTemplateId(templateId)
-        .setTemplateId(schemaId).getSchemaVersion(schemaVersion);
-    buf.put(message);
+ 
+  private long encodeApplicationMessageWithFrame(ByteBuffer buffer, ByteBuffer message) {
+    int length = message.remaining();
+    int offset = 0;
+    mutableBuffer.wrap(buffer);
+    frameEncoder.wrap(buffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(length)
+        .templateId(templateId).schemaId(schemaId)
+        .version(schemaVersion);
+    offset += MessageHeaderEncoder.ENCODED_LENGTH; 
+    buffer.position(offset);
+    buffer.put(message);
+    frameEncoder.setMessageLength(offset + length);
     frameEncoder.encodeFrameTrailer();
-  }
-  
-  private int encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
-    frameEncoder.wrap(buf);
-    frameEncoder.encodeFrameHeader();
-    sbeEncoder.wrap(buf, frameEncoder.getHeaderLength()).setBlockLength(message.length).setTemplateId(templateId)
-        .setTemplateId(schemaId).getSchemaVersion(schemaVersion);
-    buf.put(message, 0, message.length);
-    final int lengthwithHeader = message.length + SbeMessageHeaderDecoder.getLength();
-    frameEncoder.setMessageLength(lengthwithHeader);
-    frameEncoder.encodeFrameTrailer();
-    return lengthwithHeader;
+    return frameEncoder.getEncodedLength();
   }
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright 2015 FIX Protocol Ltd
+ * Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -18,7 +18,7 @@ import java.nio.ByteBuffer;
 import java.util.UUID;
 
 import org.fixtrading.silverflash.ExceptionConsumer;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.transport.Transport;
 
@@ -42,18 +42,18 @@ public interface FlowBuilder<T, B extends FlowBuilder<T, B>> {
   /**
    * Supply the outbound keepalive interval
    * 
-   * @param outboundKeepaliveInterval interval in milliseconds
+   * @param keepAliveInterval interval in milliseconds
    * @return this Builder
    */
-  B withKeepaliveInterval(int outboundKeepaliveInterval);
+  B withKeepaliveInterval(long keepAliveInterval);
 
   /**
-   * Supply an encoder for FIXP session messages
+   * Supply a frame encoder for FIXP session messages
    * 
-   * @param encoder
+   * @param encoder a frame encoder
    * @return this Builder
    */
-  B withMessageEncoder(MessageEncoder encoder);
+  B withMessageFrameEncoder(MessageFrameEncoder encoder);
 
   /**
    * Supply an event reactor

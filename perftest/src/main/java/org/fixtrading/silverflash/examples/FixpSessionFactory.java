@@ -24,6 +24,7 @@ import org.fixtrading.silverflash.fixp.FixpSession;
 import org.fixtrading.silverflash.fixp.Sessions;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
 import org.fixtrading.silverflash.fixp.store.MessageStore;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.transport.Transport;
 
@@ -90,12 +91,13 @@ public class FixpSessionFactory extends Sessions {
   public FixpSession createClientSession(byte[] credentials, Transport transport,
       BufferSupplier buffers, MessageConsumer<UUID> streamReceiver, FlowType outboundFlow) {
     FixpSession session;
-    if (outboundFlow == FlowType.RECOVERABLE) {
+    if (outboundFlow == FlowType.Recoverable) {
       session =
           FixpSession.builder().withReactor(reactor).withTransport(transport, isMultiplexed)
               .withBufferSupplier(buffers).withMessageConsumer(streamReceiver)
               .withOutboundFlow(outboundFlow).withSessionId(UUID.randomUUID())
               .withClientCredentials(credentials)
+              .withMessageFrameEncoder(new MessageLengthFrameEncoder())
               .withOutboundKeepaliveInterval(outboundKeepaliveInterval).withMessageStore(store)
               .build();
     } else {
@@ -123,11 +125,12 @@ public class FixpSessionFactory extends Sessions {
   public FixpSession createServerSession(Transport transport, BufferSupplier buffers,
       MessageConsumer<UUID> streamReceiver, FlowType outboundFlow) {
     FixpSession session;
-    if (outboundFlow == FlowType.RECOVERABLE) {
+    if (outboundFlow == FlowType.Recoverable) {
       session =
           FixpSession.builder().withReactor(reactor).withTransport(transport, isMultiplexed)
               .withBufferSupplier(buffers).withMessageConsumer(streamReceiver)
               .withOutboundFlow(outboundFlow)
+              .withMessageFrameEncoder(new MessageLengthFrameEncoder())
               .withOutboundKeepaliveInterval(outboundKeepaliveInterval).withMessageStore(store)
               .asServer().build();
     } else {
@@ -135,6 +138,7 @@ public class FixpSessionFactory extends Sessions {
           FixpSession.builder().withReactor(reactor).withTransport(transport, isMultiplexed)
               .withBufferSupplier(buffers).withMessageConsumer(streamReceiver)
               .withOutboundFlow(outboundFlow)
+              .withMessageFrameEncoder(new MessageLengthFrameEncoder())
               .withOutboundKeepaliveInterval(outboundKeepaliveInterval).asServer().build();
     }
 

@@ -1,5 +1,5 @@
 /**
- * Copyright 2015 FIX Protocol Ltd
+ * Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -20,7 +20,7 @@ import java.util.UUID;
 
 import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.fixp.SessionId;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.transport.Transport;
 
@@ -28,8 +28,8 @@ abstract class AbstractFlow {
 
   static abstract class Builder<T, B extends Builder<T, B>> implements FlowBuilder<T, B> {
     private ExceptionConsumer exceptionHandler;
-    private int keepaliveInterval;
-    private MessageEncoder messageEncoder;
+    private MessageFrameEncoder frameEncoder;
+    private long keepaliveInterval;
     private EventReactor<ByteBuffer> reactor;
     private Sequencer sequencer;
     private UUID sessionId;
@@ -53,23 +53,18 @@ abstract class AbstractFlow {
      * @see org.fixtrading.silverflash.fixp.flow.FlowBuilder#withKeepaliveInterval(int)
      */
     @Override
-    public B withKeepaliveInterval(int keepaliveInterval) {
+    public B withKeepaliveInterval(long keepaliveInterval) {
       this.keepaliveInterval = keepaliveInterval;
       return (B) this;
     }
 
-    /*
-     * (non-Javadoc)
-     * 
-     * @see org.fixtrading.silverflash.fixp.flow.FlowBuilder#withMessageEncoder(org.fixtrading.
-     * silverflash.fixp.messages.MessageEncoder)
-     */
+
     @Override
-    public B withMessageEncoder(MessageEncoder encoder) {
-      this.messageEncoder = encoder;
+    public B withMessageFrameEncoder(MessageFrameEncoder frameEncoder) {
+      this.frameEncoder = frameEncoder;
       return (B) this;
     }
-
+    
     /*
      * (non-Javadoc)
      * 
@@ -122,8 +117,8 @@ abstract class AbstractFlow {
   }
 
   protected final ExceptionConsumer exceptionHandler;
-  protected final int keepaliveInterval;
-  protected final MessageEncoder messageEncoder;
+  protected final  MessageFrameEncoder frameEncoder;
+  protected final long keepaliveInterval;
   protected final EventReactor<ByteBuffer> reactor;
   protected final Sequencer sequencer;
   protected final UUID sessionId;
@@ -139,8 +134,8 @@ abstract class AbstractFlow {
     this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);
     this.transport = builder.transport;
     this.sequencer = builder.sequencer;
-    this.messageEncoder = builder.messageEncoder;
     this.keepaliveInterval = builder.keepaliveInterval;
     this.exceptionHandler = builder.exceptionHandler;
+    this.frameEncoder = builder.frameEncoder;
   }
 }

@@ -47,11 +47,9 @@ import org.fixtrading.silverflash.fixp.FixpSharedTransportAdaptor;
 import org.fixtrading.silverflash.fixp.SessionReadyFuture;
 import org.fixtrading.silverflash.fixp.SessionTerminatedFuture;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.NotAppliedDecoder;
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.NotAppliedDecoder;
 import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.transport.Dispatcher;
@@ -89,38 +87,44 @@ public class BuySide implements Runnable {
       byte[] symbol = new byte[8];
     }
 
-    private final AcceptedDecoder accept = new AcceptedDecoder();
+    private final AcceptedDecoder acceptDecoder = new AcceptedDecoder();
+    private final NotAppliedDecoder notAppliedDecoder = new NotAppliedDecoder();
     private final AcceptStruct acceptStruct = new AcceptStruct();
-    private final DirectBuffer directBuffer = new UnsafeBuffer(ByteBuffer.allocate(0));
-    private final SbeMessageHeaderDecoder messageHeaderIn = new SbeMessageHeaderDecoder();
     private final Histogram rttHistogram;
+    private final DirectBuffer immutableBuffer = new UnsafeBuffer(new byte[0]);
+    private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+
 
     public ClientListener(Histogram rttHistogram) {
       this.rttHistogram = rttHistogram;
     }
 
     public void accept(ByteBuffer buffer, Session<UUID> session, long seqNo) {
-
-      messageHeaderIn.wrap(buffer, buffer.position());
-
-      final int templateId = messageHeaderIn.getTemplateId();
+      int offset = buffer.position();
+      immutableBuffer.wrap(buffer);
+      messageHeaderDecoder.wrap(immutableBuffer, offset);
+      offset += messageHeaderDecoder.encodedLength();
+      
+      final int templateId = messageHeaderDecoder.templateId();
       switch (templateId) {
         case AcceptedDecoder.TEMPLATE_ID:
-          decodeAccepted(buffer, acceptStruct);
+          acceptDecoder.wrap(immutableBuffer, offset, acceptDecoder.sbeBlockLength(),
+              acceptDecoder.sbeSchemaVersion());
+          decodeAccepted(acceptDecoder, acceptStruct);
           break;
-        case 0xfff0:
-          decodeNotApplied(buffer);
+        case NotAppliedDecoder.TEMPLATE_ID:
+          notAppliedDecoder.wrap(immutableBuffer, offset, notAppliedDecoder.sbeBlockLength(),
+              notAppliedDecoder.sbeSchemaVersion());
+          decodeNotApplied(notAppliedDecoder);
           break;
         default:
-          System.err.format("BuySide Receiver: Unknown template %s\n", messageHeaderIn.toString());
+          System.err.format("BuySide Receiver: Unknown template %d\n", templateId);
       }
     }
 
-    private void decodeAccepted(ByteBuffer buffer, AcceptStruct acceptStruct) {
+    private void decodeAccepted(AcceptedDecoder acceptDecoder, AcceptStruct acceptStruct) {
       try {
-        directBuffer.wrap(buffer);
-        accept.wrap(directBuffer, buffer.position() + SbeMessageHeaderDecoder.getLength(),
-            messageHeaderIn.getBlockLength(), messageHeaderIn.getSchemaVersion());
+
         // long transactTime = accept.transactTime();
         // accept.getClOrdId(acceptStruct.clOrdId, 0);
         // accept.side();
@@ -137,30 +141,20 @@ public class BuySide implements Runnable {
         // accept.crossType();
         // accept.ordStatus();
         // accept.bBOWeightIndicator();
-        long orderEntryTime = accept.orderEntryTime();
+        long orderEntryTime = acceptDecoder.orderEntryTime();
         if (orderEntryTime != 0) {
           long now = System.nanoTime();
           rttHistogram.recordValue(now - orderEntryTime);
         }
       } catch (IllegalArgumentException e) {
-        System.err.format("Decode error; %s buffer %s\n", e.getMessage(), buffer.toString());
+        System.err.format("Decode error; %s buffer %s\n", e.getMessage(), acceptDecoder.toString());
       }
     }
 
-    private void decodeNotApplied(ByteBuffer buffer) {
-      Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
-      final Decoder decoder = optDecoder.get();
-      switch (decoder.getMessageType()) {
-        case NOT_APPLIED:
-          NotAppliedDecoder notAppliedDecoder = (NotAppliedDecoder) decoder;
-          long fromSeqNo = notAppliedDecoder.getFromSeqNo();
-          int count = notAppliedDecoder.getCount();
-          System.err.format("Not Applied from seq no %d count %d%n", fromSeqNo, count);
-          break;
-        default:
-          System.err.println("Unexpected application message");
-
-      }
+    private void decodeNotApplied(NotAppliedDecoder notAppliedDecoder2) {
+      long fromSeqNo = notAppliedDecoder.fromSeqNo();
+      long count = notAppliedDecoder.count();
+      System.err.format("Not Applied from seq no %d count %d%n", fromSeqNo, count);
     }
   }
 
@@ -176,8 +170,8 @@ public class BuySide implements Runnable {
     private final int orders;
     private final int ordersPerPacket;
     private final Histogram rttHistogram;
-    private SbeMessageHeaderEncoder sbeEncoder = new SbeMessageHeaderEncoder();
     private SessionTerminatedFuture terminatedFuture;
+    private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
 
     public ClientRunner(Session<UUID> client, Histogram rttHistogram, int orders, int batchSize,
         int ordersPerPacket, long batchPauseMillis) {
@@ -220,45 +214,38 @@ public class BuySide implements Runnable {
       return terminatedFuture;
     }
 
-    private void encodeOrder(MutableDirectBuffer directBuffer, ByteBuffer byteBuffer,
+    private void encodeOrder(MutableDirectBuffer mutableBuffer, ByteBuffer sendBuffer,
         boolean shouldTimestamp, int orderNumber) {
-      int bufferOffset = byteBuffer.position();
-
-      frameEncoder.wrap(byteBuffer);
-      frameEncoder.encodeFrameHeader();
-
-      bufferOffset += frameEncoder.getHeaderLength();
-
-      sbeEncoder.wrap(byteBuffer, bufferOffset).setBlockLength(order.sbeBlockLength())
-          .setTemplateId(order.sbeTemplateId()).setSchemaId(order.sbeSchemaId())
-          .getSchemaVersion(order.sbeSchemaVersion());
-
-      bufferOffset += SbeMessageHeaderDecoder.getLength();
-
-      order.wrap(directBuffer, bufferOffset);
-
+      int offset = 0;
+      frameEncoder.wrap(sendBuffer, offset).encodeFrameHeader();
+      offset += frameEncoder.getHeaderLength();
+      messageHeaderEncoder.wrap(mutableBuffer, offset);
+      messageHeaderEncoder.blockLength(orderEncoder.sbeBlockLength())
+          .templateId(orderEncoder.sbeTemplateId()).schemaId(orderEncoder.sbeSchemaId())
+          .version(orderEncoder.sbeSchemaVersion());
+      offset += messageHeaderEncoder.encodedLength();
+      orderEncoder.wrap(mutableBuffer, offset);
       clOrdIdBuffer.putInt(6, orderNumber);
-      order.putClOrdId(clOrdId, 0);
-      order.side(Side.Sell);
-      order.orderQty(1L);
-      order.putSymbol(symbol, 0);
-      order.price().mantissa(10000000);
-      order.expireTime(1000L);
-      order.putClientID(clientId, 0);
-      order.display(Display.AnonymousPrice);
-      order.orderCapacity(OrderCapacity.Agency);
-      order.intermarketSweepEligibility(IntermarketSweepEligibility.Eligible);
-      order.minimumQuantity(1L);
-      order.crossType(CrossType.NoCross);
-      order.customerType(CustomerType.Retail);
+      orderEncoder.putClOrdId(clOrdId, 0);
+      orderEncoder.side(Side.Sell);
+      orderEncoder.orderQty(1L);
+      orderEncoder.putSymbol(symbol, 0);
+      orderEncoder.price().mantissa(10000000);
+      orderEncoder.expireTime(1000L);
+      orderEncoder.putClientID(clientId, 0);
+      orderEncoder.display(Display.AnonymousPrice);
+      orderEncoder.orderCapacity(OrderCapacity.Agency);
+      orderEncoder.intermarketSweepEligibility(IntermarketSweepEligibility.Eligible);
+      orderEncoder.minimumQuantity(1L);
+      orderEncoder.crossType(CrossType.NoCross);
+      orderEncoder.customerType(CustomerType.Retail);
       if (shouldTimestamp) {
-        order.transactTime(System.nanoTime());
+        orderEncoder.transactTime(System.nanoTime());
       } else {
-        order.transactTime(0);
+        orderEncoder.transactTime(0);
       }
 
-      final int lengthwithHeader = SbeMessageHeaderDecoder.getLength() + order.encodedLength();
-      frameEncoder.setMessageLength(lengthwithHeader);
+      frameEncoder.setMessageLength(offset + orderEncoder.encodedLength());
       frameEncoder.encodeFrameTrailer();
     }
 
@@ -498,9 +485,8 @@ public class BuySide implements Runnable {
 
   private ExecutorService executor;
 
-  private final MessageDecoder messageDecoder = new MessageDecoder();
   private int numberOfClients;
-  private final EnterOrderEncoder order = new EnterOrderEncoder();
+  private final EnterOrderEncoder orderEncoder = new EnterOrderEncoder();
   private int ordersToSend;
   private final Properties props;
   private ClientRunner[] runners;
@@ -529,8 +515,7 @@ public class BuySide implements Runnable {
       sharedTransport = FixpSharedTransportAdaptor.builder().withReactor(engine.getReactor())
           .withTransport(createRawTransport(0))
           .withBufferSupplier(new SingleBufferSupplier(
-              ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
-          .withFlowType(FlowType.IDEMPOTENT).build();
+              ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder()))).build();
     }
 
     return sharedTransport;
@@ -596,7 +581,7 @@ public class BuySide implements Runnable {
     boolean isSequenced = clientConfig.isOutboundFlowSequenced();
     boolean isRecoverable = clientConfig.isOutboundFlowRecoverable();
     FlowType outboundFlow = isSequenced
-        ? (isRecoverable ? FlowType.RECOVERABLE : FlowType.IDEMPOTENT) : FlowType.UNSEQUENCED;
+        ? (isRecoverable ? FlowType.Recoverable : FlowType.Idempotent) : FlowType.Unsequenced;
     boolean isMultiplexed = clientConfig.isTransportMultiplexed();
 
     ClientListener clientListener = new ClientListener(rttHistogram);

@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,16 +19,33 @@ package org.fixtrading.silverflash.frame;
 import java.nio.ByteBuffer;
 
 /**
+ * Locates limits of a message frame
  * @author Don Mendelson
  *
  */
 public interface MessageFrameDecoder {
+  
+  /**
+   * Returns a new MessageFrameDecoder of the same class
+   * @return a new MessageFrameDecoder
+   */
+  MessageFrameDecoder copy();
 
   MessageFrameDecoder decodeFrameHeader();
 
   MessageFrameDecoder decodeFrameTrailer();
 
+  /**
+   * Returns the length of the message body
+   * @return message length
+   */
   int getMessageLength();
+  
+  /**
+   * Returns the frame header length
+   * @return header length
+   */
+  int getHeaderLength();
 
   MessageFrameDecoder wrap(ByteBuffer buffer);
 

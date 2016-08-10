@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ public class MessageLengthFrameDecoder implements MessageFrameDecoder {
    * @see org.fixtrading.silverflash.frame.sofh.MessageFrameDecoder#decodeFrameHeader()
    */
   @Override
-  public MessageFrameDecoder decodeFrameHeader() {
+  public MessageLengthFrameDecoder decodeFrameHeader() {
     messageLength = buffer.getShort(frameStartOffset + MESSAGE_LENGTH_OFFSET) & 0xffff;
     buffer.position(frameStartOffset + HEADER_LENGTH);
     return this;
@@ -52,7 +52,7 @@ public class MessageLengthFrameDecoder implements MessageFrameDecoder {
    * @see org.fixtrading.silverflash.frame.sofh.MessageFrameDecoder#decodeFrameTrailer()
    */
   @Override
-  public MessageFrameDecoder decodeFrameTrailer() {
+  public MessageLengthFrameDecoder decodeFrameTrailer() {
     return this;
   }
 
@@ -72,12 +72,22 @@ public class MessageLengthFrameDecoder implements MessageFrameDecoder {
    * @see org.fixtrading.silverflash.frame.sofh.MessageFrameDecoder#wrap(java.nio.ByteBuffer)
    */
   @Override
-  public MessageFrameDecoder wrap(ByteBuffer buffer) {
+  public MessageLengthFrameDecoder wrap(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     this.buffer = buffer;
     this.frameStartOffset = buffer.position();
     messageLength = -1;
     return this;
+  }
+
+  @Override
+  public MessageLengthFrameDecoder copy() {
+    return new MessageLengthFrameDecoder();
+  }
+
+  @Override
+  public int getHeaderLength() {
+    return HEADER_LENGTH;
   }
 
 }

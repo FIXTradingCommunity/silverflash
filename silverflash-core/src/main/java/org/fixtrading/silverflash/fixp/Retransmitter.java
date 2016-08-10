@@ -1,17 +1,15 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ * Copyright 2015-2016 FIX Protocol Ltd
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations under
+ * the License.
  *
  */
 
@@ -25,19 +23,18 @@ import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
+import org.agrona.DirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.Service;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.RetransmissionRequestDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.RetransmitRequestDecoder;
 import org.fixtrading.silverflash.fixp.store.MessageStore;
 import org.fixtrading.silverflash.fixp.store.MessageStoreResult;
 import org.fixtrading.silverflash.fixp.store.StoreException;
@@ -46,11 +43,11 @@ import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.Topic;
 
+
 /**
  * Retrieves requested messages from a MessageStore and retransmits them on recoverable flows
  * 
- * @author Don Mendelson
- * TODO: make frame decoder configurable
+ * @author Don Mendelson TODO: make frame decoder configurable
  */
 public class Retransmitter implements Service {
 
@@ -80,44 +77,51 @@ public class Retransmitter implements Service {
     }
   };
 
-  private final MessageDecoder messageDecoder = new MessageDecoder();
   private final MessageLengthFrameDecoder frameDecoder = new MessageLengthFrameDecoder();
   private final EventReactor<ByteBuffer> reactor;
   // todo: a vulture to remove entries for dead sessions, may consider LRU,
   // evict dead sessions
   private final Map<UUID, SessionValue> resultMap = new ConcurrentHashMap<>();
+  private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+  private final DirectBuffer directBuffer = new UnsafeBuffer(new byte[0]);
+  private RetransmitRequestDecoder requestDecoder = new RetransmitRequestDecoder();
 
   private final Receiver retrieveHandler = buffer -> {
     frameDecoder.wrap(buffer);
     frameDecoder.decodeFrameHeader();
-    Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
-    if (optDecoder.isPresent()) {
-      final Decoder decoder = optDecoder.get();
-      if (decoder.getMessageType() == MessageType.RETRANSMIT_REQUEST) {
-        RetransmissionRequestDecoder negotiateDecoder = (RetransmissionRequestDecoder) decoder;
-        byte[] sessionId = new byte[16];
-        negotiateDecoder.getSessionId(sessionId, 0);
-        long requestTimestamp = negotiateDecoder.getTimestamp();
-        long fromSeqNo = negotiateDecoder.getFromSeqNo();
-        int count = negotiateDecoder.getCount();
+    int offset = buffer.position();
+    directBuffer.wrap(buffer);
+    messageHeaderDecoder.wrap(directBuffer, offset);
+    if (messageHeaderDecoder.templateId() == requestDecoder.sbeTemplateId()
+        && messageHeaderDecoder.schemaId() == requestDecoder.sbeSchemaId()) {
+      offset += messageHeaderDecoder.encodedLength();
+      requestDecoder.wrap(directBuffer, offset,
+          requestDecoder.sbeBlockLength(), requestDecoder.sbeSchemaVersion());
 
-        UUID uuid = SessionId.UUIDFromBytes(sessionId);
+      byte[] sessionId = new byte[16];
+      for (int i = 0; i < 16; i++) {
+        sessionId[i] = (byte) requestDecoder.sessionId(i);
+      }
+      long requestTimestamp = requestDecoder.timestamp();
+      long fromSeqNo = requestDecoder.fromSeqNo();
+      long count = requestDecoder.count();
 
-        SessionValue value = getResultForSession(uuid);
-        if (value.result.isRangeContained(fromSeqNo, count)) {
-          try {
-            resend(value.result, fromSeqNo, value.session.get());
-          } catch (IOException ex) {
+      UUID uuid = SessionId.UUIDFromBytes(sessionId);
 
+      SessionValue value = getResultForSession(uuid);
+      if (value.result.isRangeContained(fromSeqNo, count)) {
+        try {
+          resend(value.result, fromSeqNo, value.session.get());
+        } catch (IOException ex) {
+
+        }
+      } else {
+        try {
+          if (!requestMessagesFromStore(value.result, requestTimestamp, fromSeqNo, count)) {
+            // reject for in-flight request
           }
-        } else {
-          try {
-            if (!requestMessagesFromStore(value.result, requestTimestamp, fromSeqNo, count)) {
-              // reject for in-flight request
-            }
-          } catch (StoreException ex) {
-            // notify client?
-          }
+        } catch (StoreException ex1) {
+          // notify client?
         }
       }
     }
@@ -132,15 +136,13 @@ public class Retransmitter implements Service {
   /**
    * Constructor
    * 
-   * @param reactor
-   *          message pub / sub
-   * @param store
-   *          a repository of messages
-   * @param sessions
-   *          a collection of open sessions
-   * @param exceptionConsumer 
+   * @param reactor message pub / sub
+   * @param store a repository of messages
+   * @param sessions a collection of open sessions
+   * @param exceptionConsumer
    */
-  public Retransmitter(EventReactor<ByteBuffer> reactor, MessageStore store, Sessions sessions, ExceptionConsumer exceptionConsumer) {
+  public Retransmitter(EventReactor<ByteBuffer> reactor, MessageStore store, Sessions sessions,
+      ExceptionConsumer exceptionConsumer) {
     Objects.requireNonNull(reactor);
     Objects.requireNonNull(store);
     this.reactor = reactor;
@@ -211,7 +213,7 @@ public class Retransmitter implements Service {
   }
 
   private boolean requestMessagesFromStore(MessageStoreResult result, long requestTimestamp,
-      long fromSeqNo, int count) throws StoreException {
+      long fromSeqNo, long count) throws StoreException {
     final boolean requested = result.setRequest(requestTimestamp, fromSeqNo, count);
     if (requested) {
       store.retrieveMessagesAsync(result, consumer);

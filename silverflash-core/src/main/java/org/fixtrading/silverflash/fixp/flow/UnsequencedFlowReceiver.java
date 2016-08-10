@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,13 +22,17 @@ import static org.fixtrading.silverflash.fixp.SessionEventTopics.SessionEventTyp
 
 import java.nio.ByteBuffer;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.agrona.DirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
+import org.fixtrading.silverflash.fixp.flow.NoneFlowReceiver.Builder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.TerminateDecoder;
+import org.fixtrading.silverflash.fixp.messages.UnsequencedHeartbeatDecoder;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;
@@ -48,6 +52,7 @@ public class UnsequencedFlowReceiver extends AbstractReceiverFlow implements Flo
     public UnsequencedFlowReceiver build() {
       return new UnsequencedFlowReceiver(this);
     }
+
   }
 
   public static Builder<UnsequencedFlowReceiver, ? extends FlowReceiverBuilder> builder() {
@@ -64,8 +69,10 @@ public class UnsequencedFlowReceiver extends AbstractReceiverFlow implements Flo
   private final Subscription heartbeatSubscription;
   private boolean isEndOfStream = false;
   private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
-  private final MessageDecoder messageDecoder = new MessageDecoder();
   private final Topic terminatedTopic;
+  private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+  private final DirectBuffer immutableBuffer = new UnsafeBuffer(new byte[0]);
+
 
   protected UnsequencedFlowReceiver(Builder builder) {
     super(builder);
@@ -80,24 +87,24 @@ public class UnsequencedFlowReceiver extends AbstractReceiverFlow implements Flo
 
   @Override
   public void accept(ByteBuffer buffer) {
-    Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
-
     boolean isApplicationMessage = true;
-    if (optDecoder.isPresent()) {
-      final Decoder decoder = optDecoder.get();
-      switch (decoder.getMessageType()) {
-      case UNSEQUENCED_HEARTBEAT:
+    immutableBuffer.wrap(buffer);
+    int offset = buffer.position();
+    messageHeaderDecoder.wrap(immutableBuffer, offset);
+    if (messageHeaderDecoder.schemaId() == TerminateDecoder.SCHEMA_ID) {
+
+      switch (messageHeaderDecoder.templateId()) {
+      case UnsequencedHeartbeatDecoder.TEMPLATE_ID:
         heartbeatReceived();
         isApplicationMessage = false;
         break;
-      case TERMINATE:
+      case TerminateDecoder.TEMPLATE_ID:
         terminated(buffer);
         isApplicationMessage = false;
         break;
       default:
 //        System.out.println("UnsequencedFlowReceiver: Protocol violation; unexpected session message "
 //            + decoder.getMessageType());
-        buffer.reset();
         reactor.post(terminatedTopic, buffer);
       }
     }

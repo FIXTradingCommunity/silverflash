@@ -16,7 +16,7 @@
 		</dependency>
 		<dependency>
 			<groupId>uk.co.real-logic</groupId>
-			<artifactId>sbe-all</artifactId>
+			<artifactId>sbe-tool</artifactId>
 			<version>${sbe.version}</version>
 		</dependency>
 		<dependency>
@@ -31,7 +31,7 @@
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>exec-maven-plugin</artifactId>
-				<version>1.4.0</version>
+				<version>1.5.0</version>
 				<executions>
 					<execution>
 						<id>generate</id>
@@ -45,18 +45,37 @@
 					<mainClass>uk.co.real_logic.sbe.SbeTool</mainClass>
 					<classpathScope>compile</classpathScope>
 					<commandlineArgs>${project.build.resources[0].directory}/templates/application-schema.xml</commandlineArgs>
-					<!-- Maven doc says systemPropertyVariables, but that doesn't work -->
 					<systemProperties>
-						<property>
+						<systemProperty>
 							<key>sbe.output.dir</key>
-							<value>${project.build.sourceDirectory}</value>
-						</property>
-						<property>
+							<value>${project.build.directory}/generated-sources/java</value>
+						</systemProperty>
+						<systemProperty>
 							<key>sbe.target.namespace</key>
 							<value>org.fixtrading.silverflash.examples.messages</value>
-						</property>
+						</systemProperty>
 					</systemProperties>
+					<workingDirectory>${project.build.directory}/generated-sources/java</workingDirectory>
 				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>build-helper-maven-plugin</artifactId>
+				<version>1.11</version>
+				<executions>
+					<execution>
+						<id>add-source</id>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>add-source</goal>
+						</goals>
+						<configuration>
+							<sources>
+								<source>${project.build.directory}/generated-sources/java/</source>
+							</sources>
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
 			<plugin>
 				<artifactId>maven-assembly-plugin</artifactId>

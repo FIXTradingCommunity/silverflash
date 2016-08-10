@@ -1,17 +1,15 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ * Copyright 2015 FIX Protocol Ltd
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations under
+ * the License.
  *
  */
 package org.fixtrading.silverflash.cuke;
@@ -26,6 +24,10 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.auth.Directory;
@@ -34,12 +36,9 @@ import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
 import org.fixtrading.silverflash.fixp.FixpSession;
 import org.fixtrading.silverflash.fixp.SessionReadyFuture;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.NotAppliedDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.NotAppliedDecoder;
 import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.transport.PipeTransport;
@@ -61,15 +60,14 @@ public class SessionStepdefs {
     public ByteBuffer getLastMessage() {
       return ByteBuffer.wrap(message, 0, length).order(ByteOrder.nativeOrder());
     }
-    
-    public byte [] getLastMessageAsBytes() {
-      return Arrays.copyOfRange(message, 
-          SbeMessageHeaderEncoder.getLength(), length);
+
+    public byte[] getLastMessageAsBytes() {
+      return Arrays.copyOfRange(message, 0, length);
     }
 
     @Override
     public void accept(ByteBuffer buf, Session<UUID> session, long seqNo) {
-      length = buf.limit() - buf.position();
+      length = buf.remaining();
       buf.get(message, 0, length);
       // System.out.println("Length="+length);
       totalMessages++;
@@ -96,7 +94,8 @@ public class SessionStepdefs {
       this.isFifo = isFifo;
     }
 
-    public CompletableFuture<? extends Transport> open(BufferSupplier buffers, TransportConsumer consumer) {
+    public CompletableFuture<? extends Transport> open(BufferSupplier buffers,
+        TransportConsumer consumer) {
       return component.open(buffers, consumer);
     }
 
@@ -125,7 +124,9 @@ public class SessionStepdefs {
       return component.isOpen();
     }
 
-    /* (non-Javadoc)
+    /*
+     * (non-Javadoc)
+     * 
      * @see org.fixtrading.silverflash.transport.Transport#isReadyToRead()
      */
     @Override
@@ -133,7 +134,9 @@ public class SessionStepdefs {
       return component.isReadyToRead();
     }
 
-    /* (non-Javadoc)
+    /*
+     * (non-Javadoc)
+     * 
      * @see org.fixtrading.silverflash.transport.Transport#isMessageOriented()
      */
     @Override
@@ -151,12 +154,15 @@ public class SessionStepdefs {
   private TestReceiver clientReceiver;
   private int outboundKeepaliveInterval = 500;
   private final MessageFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
-  private final SbeMessageHeaderEncoder sbeEncoder = new SbeMessageHeaderEncoder();
   private final byte[] message = "This an application message".getBytes();
+  private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
+  private MutableDirectBuffer mutableBuffer = new UnsafeBuffer(new byte[0]);
+  private final DirectBuffer immutableBuffer = new UnsafeBuffer(new byte[0]);
+  private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+  private final NotAppliedDecoder notAppliedDecoder = new NotAppliedDecoder();
 
   public SessionStepdefs() throws Exception {
-      applicationMessageBuffer =
-        ByteBuffer.allocate(128).order(ByteOrder.nativeOrder());
+    applicationMessageBuffer = ByteBuffer.allocate(128).order(ByteOrder.nativeOrder());
     encodeApplicationMessageWithFrame(applicationMessageBuffer, message);
   }
 
@@ -174,42 +180,33 @@ public class SessionStepdefs {
         new TestTransportDecorator(memoryTransport.getServerTransport(), false);
     serverReceiver = new TestReceiver();
 
-    serverSession =
-        FixpSession
-            .builder()
-            .withReactor(RunAllTests.getServerEngine().getReactor())
-            .withTransport(serverTransport)
-            .withBufferSupplier(
-                new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(
-                    ByteOrder.nativeOrder()))).withMessageConsumer(serverReceiver)
-            .withOutboundFlow(FlowType.IDEMPOTENT)
-            .withOutboundKeepaliveInterval(outboundKeepaliveInterval).asServer().build();
+    serverSession = FixpSession.builder().withReactor(RunAllTests.getServerEngine().getReactor())
+        .withTransport(serverTransport)
+        .withBufferSupplier(
+            new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
+        .withMessageConsumer(serverReceiver).withOutboundFlow(FlowType.Idempotent)
+        .withOutboundKeepaliveInterval(outboundKeepaliveInterval).asServer().build();
 
 
     Transport clientTransport =
         new TestTransportDecorator(memoryTransport.getClientTransport(), false);
     clientReceiver = new TestReceiver();
 
-    clientSession =
-        FixpSession
-            .builder()
-            .withReactor(RunAllTests.getClientEngine().getReactor())
-            .withTransport(clientTransport)
-            .withBufferSupplier(
-                new SingleBufferSupplier(ByteBuffer.allocateDirect(16 * 1024).order(
-                    ByteOrder.nativeOrder()))).withMessageConsumer(clientReceiver)
-            .withOutboundFlow(FlowType.IDEMPOTENT).withSessionId(UUID.randomUUID())
-            .withClientCredentials(USER1_CREDENTIALS.getBytes())
-            .withOutboundKeepaliveInterval(outboundKeepaliveInterval).build();
+    clientSession = FixpSession.builder().withReactor(RunAllTests.getClientEngine().getReactor())
+        .withTransport(clientTransport)
+        .withBufferSupplier(new SingleBufferSupplier(
+            ByteBuffer.allocateDirect(16 * 1024).order(ByteOrder.nativeOrder())))
+        .withMessageConsumer(clientReceiver).withOutboundFlow(FlowType.Idempotent)
+        .withSessionId(UUID.randomUUID()).withClientCredentials(USER1_CREDENTIALS.getBytes())
+        .withOutboundKeepaliveInterval(outboundKeepaliveInterval).build();
   }
 
   @Given("^the client establishes a session with the server$")
   public void the_client_establishes_a_session_with_the_server() throws Throwable {
     serverSession.open();
 
-    SessionReadyFuture future =
-        new SessionReadyFuture(clientSession.getSessionId(), RunAllTests.getClientEngine()
-            .getReactor());
+    SessionReadyFuture future = new SessionReadyFuture(clientSession.getSessionId(),
+        RunAllTests.getClientEngine().getReactor());
     clientSession.open();
     future.get(3000, TimeUnit.MILLISECONDS);
   }
@@ -217,7 +214,7 @@ public class SessionStepdefs {
   @Given("^the client establishes an idempotent flow to server$")
   public void the_client_establishes_an_idempotent_flow_to_server() throws Throwable {
     Thread.sleep(500L);
-    assertEquals(FlowType.IDEMPOTENT, clientSession.getOutboundFlow());
+    assertEquals(FlowType.Idempotent, clientSession.getOutboundFlow());
   }
 
   @When("^the client application sends an application message$")
@@ -234,7 +231,9 @@ public class SessionStepdefs {
 
   @Then("^presents it to its application$")
   public void presents_it_to_its_application() throws Throwable {
-    assertArrayEquals(message, serverReceiver.getLastMessageAsBytes());
+    final byte[] lastMessageAsBytes = serverReceiver.getLastMessageAsBytes();
+    assertArrayEquals(message, Arrays.copyOfRange(lastMessageAsBytes,
+        MessageHeaderEncoder.ENCODED_LENGTH, lastMessageAsBytes.length));
   }
 
   @Then("^the server application has received a total of (\\d+) messages$")
@@ -264,27 +263,22 @@ public class SessionStepdefs {
     if (buffer == null) {
       fail("No response message received");
     }
-    final SbeMessageHeaderDecoder messageHeader = new SbeMessageHeaderDecoder();
-    messageHeader.wrap(buffer, 0);
-    assertEquals("NoApplied was not last message recieved", MessageType.NOT_APPLIED.getCode(),
-        messageHeader.getTemplateId());
+    int offset = buffer.position();
+    immutableBuffer.wrap(buffer);
+    messageHeaderDecoder.wrap(immutableBuffer, offset);
+    offset += messageHeaderDecoder.encodedLength();
 
-    final MessageDecoder messageDecoder = new MessageDecoder();
-    Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
+    final int templateId = messageHeaderDecoder.templateId();
+    switch (templateId) {
 
-    if (optDecoder.isPresent()) {
-      final Decoder decoder = optDecoder.get();
-      switch (decoder.getMessageType()) {
-        case NOT_APPLIED:
-          NotAppliedDecoder notApplied = (NotAppliedDecoder) decoder;
-          assertEquals(arg1, notApplied.getFromSeqNo());
-          assertEquals(arg2, notApplied.getCount());
-          break;
-        default:
-          fail("NoApplied was not last message recieved");
-      }
-    } else {
-      fail("NoApplied was not last message recieved");
+      case NotAppliedDecoder.TEMPLATE_ID:
+        notAppliedDecoder.wrap(immutableBuffer, offset, notAppliedDecoder.sbeBlockLength(),
+            notAppliedDecoder.sbeSchemaVersion());
+        assertEquals(arg1, notAppliedDecoder.fromSeqNo());
+        assertEquals(arg2, notAppliedDecoder.count());
+        break;
+      default:
+        fail("NoApplied was not last message recieved");
     }
   }
 
@@ -295,16 +289,19 @@ public class SessionStepdefs {
     clientSession = null;
     serverSession = null;
   }
-  
-  private int encodeApplicationMessageWithFrame(ByteBuffer buf, byte[] message) {
-    frameEncoder.wrap(buf);
-    frameEncoder.encodeFrameHeader();
-    sbeEncoder.wrap(buf, frameEncoder.getHeaderLength()).setBlockLength(message.length).setTemplateId(1)
-        .setTemplateId(2).getSchemaVersion(0);
-    buf.put(message, 0, message.length);
-    final int lengthwithHeader = message.length + SbeMessageHeaderDecoder.getLength();
-    frameEncoder.setMessageLength(lengthwithHeader);
+
+  private long encodeApplicationMessageWithFrame(ByteBuffer buffer, byte[] message) {
+    int offset = 0;
+    mutableBuffer.wrap(buffer);
+    frameEncoder.wrap(buffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(message.length).templateId(2).schemaId(1).version(0);
+    offset += MessageHeaderEncoder.ENCODED_LENGTH;
+    buffer.position(offset);
+    buffer.put(message, 0, message.length);
+    frameEncoder.setMessageLength(message.length + MessageHeaderEncoder.ENCODED_LENGTH);
     frameEncoder.encodeFrameTrailer();
-    return lengthwithHeader;
+    return frameEncoder.getEncodedLength();
   }
 }

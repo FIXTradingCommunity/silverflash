@@ -51,11 +51,9 @@ import org.fixtrading.silverflash.fixp.FixpSession;
 import org.fixtrading.silverflash.fixp.FixpSharedTransportAdaptor;
 import org.fixtrading.silverflash.fixp.auth.SimpleAuthenticator;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.NotAppliedDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.NotAppliedDecoder;
 import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.transport.Dispatcher;
@@ -65,7 +63,7 @@ import org.fixtrading.silverflash.transport.TcpAcceptor;
 import org.fixtrading.silverflash.transport.Transport;
 import org.fixtrading.silverflash.transport.TransportConsumer;
 import org.fixtrading.silverflash.transport.UdpTransport;
-
+import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 
@@ -100,8 +98,9 @@ public class SellSide {
           .withTransport(sharedTransport, true)
           .withBufferSupplier(new SingleBufferSupplier(
               ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
-          .withMessageConsumer(consumer).withOutboundFlow(FlowType.IDEMPOTENT)
-          .withSessionId(sessionId).asServer().build();
+          .withMessageConsumer(consumer).withOutboundFlow(FlowType.Idempotent)
+          .withMessageFrameEncoder(new MessageLengthFrameEncoder()).withSessionId(sessionId)
+          .asServer().build();
 
       session.open().handle((s, error) -> {
         if (error instanceof Exception) {
@@ -134,32 +133,42 @@ public class SellSide {
       long transactTime;
     }
 
-    private final AcceptedEncoder accept = new AcceptedEncoder();
+    private final AcceptedEncoder acceptEncoder = new AcceptedEncoder();
+    private final NotAppliedDecoder notAppliedDecoder = new NotAppliedDecoder();
     private final ByteBuffer byteBuffer =
         ByteBuffer.allocateDirect(1420).order(ByteOrder.nativeOrder());
     private final MutableDirectBuffer directBuffer = new UnsafeBuffer(byteBuffer);
     private MessageFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
-    private final SbeMessageHeaderDecoder messageHeaderIn = new SbeMessageHeaderDecoder();
-    private final EnterOrderDecoder order = new EnterOrderDecoder();
+    private final EnterOrderDecoder orderDecoder = new EnterOrderDecoder();
     private long orderId = 0;
     private OrderStruct orderStruct = new OrderStruct();
-    private SbeMessageHeaderEncoder sbeEncoder = new SbeMessageHeaderEncoder();
     private int serverAccepted = 0;
     private int serverDecodeErrors = 0;
     private int serverReceived = 0;
     private int serverUnknown = 0;
+    private final DirectBuffer immutableBuffer = new UnsafeBuffer(new byte[0]);
+    private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+    private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
+
 
     public void accept(ByteBuffer inboundBuffer, Session<UUID> session, long seqNo) {
 
       serverReceived++;
 
-      messageHeaderIn.wrap(inboundBuffer, inboundBuffer.position());
+      int offset = inboundBuffer.position();
+      immutableBuffer.wrap(inboundBuffer);
+      messageHeaderDecoder.wrap(immutableBuffer, offset);
+      offset += messageHeaderDecoder.encodedLength();
 
-      final int templateId = messageHeaderIn.getTemplateId();
+      final int templateId = messageHeaderDecoder.templateId();
       switch (templateId) {
+
         case EnterOrderDecoder.TEMPLATE_ID:
 
-          boolean decoded = decodeOrder(inboundBuffer, orderStruct);
+          orderDecoder.wrap(immutableBuffer, offset, orderDecoder.sbeBlockLength(),
+              orderDecoder.sbeSchemaVersion());
+
+          boolean decoded = decodeOrder(orderDecoder, orderStruct);
           if (decoded) {
 
             try {
@@ -181,13 +190,15 @@ public class SellSide {
             serverDecodeErrors++;
           }
           break;
-        case 0xfff0:
-          decodeNotApplied(inboundBuffer);
+        case NotAppliedDecoder.TEMPLATE_ID:
+          notAppliedDecoder.wrap(immutableBuffer, offset, notAppliedDecoder.sbeBlockLength(),
+              notAppliedDecoder.sbeSchemaVersion());
+
+          decodeNotApplied(notAppliedDecoder);
           break;
         default:
           serverUnknown++;
-          System.err.format("SellSide Receiver: Unknown template %s buffer %s\n",
-              messageHeaderIn.toString(), inboundBuffer.toString());
+          System.err.format("SellSide Receiver: Unknown template %d%n", templateId);
       }
 
       if (serverReceived % 10000 == 0) {
@@ -195,81 +206,60 @@ public class SellSide {
       }
     }
 
-    private void decodeNotApplied(ByteBuffer buffer) {
-      Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
-      final Decoder decoder = optDecoder.get();
-      switch (decoder.getMessageType()) {
-        case NOT_APPLIED:
-          NotAppliedDecoder notAppliedDecoder = (NotAppliedDecoder) decoder;
-          long fromSeqNo = notAppliedDecoder.getFromSeqNo();
-          int count = notAppliedDecoder.getCount();
-          System.err.format("Not Applied from seq no %d count %d%n", fromSeqNo, count);
-          break;
-        default:
-          System.err.println("Unexpected application message");
-      }
+    private void decodeNotApplied(NotAppliedDecoder notAppliedDecoder2) {
+      long fromSeqNo = notAppliedDecoder.fromSeqNo();
+      long count = notAppliedDecoder.count();
+      System.err.format("Not Applied from seq no %d count %d%n", fromSeqNo, count);
     }
 
-    private boolean decodeOrder(ByteBuffer buffer, OrderStruct orderStruct) {
-      directBuffer.wrap(buffer);
-      order.wrap(directBuffer, buffer.position() + SbeMessageHeaderDecoder.getLength(),
-          messageHeaderIn.getBlockLength(), messageHeaderIn.getSchemaVersion());
+    private boolean decodeOrder(EnterOrderDecoder orderDecoder, OrderStruct orderStruct) {
 
-      order.getClOrdId(orderStruct.clOrdId, 0);
-      order.side();
-      order.orderQty();
-      order.getSymbol(orderStruct.symbol, 0);
-      order.price();
-      order.expireTime();
-      order.getClientID(orderStruct.clientId, 0);
-      order.display();
-      order.orderCapacity();
-      order.intermarketSweepEligibility();
-      order.minimumQuantity();
-      order.crossType();
-      order.customerType();
-      orderStruct.transactTime = order.transactTime();
+      orderDecoder.getClOrdId(orderStruct.clOrdId, 0);
+      orderDecoder.side();
+      orderDecoder.orderQty();
+      orderDecoder.getSymbol(orderStruct.symbol, 0);
+      orderDecoder.price();
+      orderDecoder.expireTime();
+      orderDecoder.getClientID(orderStruct.clientId, 0);
+      orderDecoder.display();
+      orderDecoder.orderCapacity();
+      orderDecoder.intermarketSweepEligibility();
+      orderDecoder.minimumQuantity();
+      orderDecoder.crossType();
+      orderDecoder.customerType();
+      orderStruct.transactTime = orderDecoder.transactTime();
       return true;
     }
 
-    private void encodeAccept(OrderStruct orderStruct, MutableDirectBuffer directBuffer,
-        ByteBuffer byteBuffer) {
-      int bufferOffset = byteBuffer.position();
-
-      frameEncoder.wrap(byteBuffer);
-      frameEncoder.encodeFrameHeader();
-
-      bufferOffset += frameEncoder.getHeaderLength();
-
-      sbeEncoder.wrap(byteBuffer, bufferOffset).setBlockLength(accept.sbeBlockLength())
-          .setTemplateId(accept.sbeTemplateId()).setSchemaId(accept.sbeSchemaId())
-          .getSchemaVersion(accept.sbeSchemaVersion());
-
-      bufferOffset += SbeMessageHeaderDecoder.getLength();
-
-      directBuffer.wrap(byteBuffer);
-      accept.wrap(directBuffer, bufferOffset);
-
-      accept.transactTime(0);
-      accept.putClOrdId(orderStruct.clOrdId, 0);
-      accept.side(Side.Sell);
-      accept.orderQty(1L);
-      accept.putSymbol(orderStruct.symbol, 0);
-      accept.price().mantissa(10000000);
-      accept.expireTime(1000L);
-      accept.putClientID(orderStruct.clientId, 0);
-      accept.display(Display.AnonymousPrice);
-      accept.orderId(++orderId);
-      accept.orderCapacity(OrderCapacity.Agency);
-      accept.intermarketSweepEligibility(IntermarketSweepEligibility.Eligible);
-      accept.minimumQuantity(1L);
-      accept.crossType(CrossType.NoCross);
-      accept.ordStatus(OrdStatus.New);
-      accept.bBOWeightIndicator(BBOWeight.Level0);
-      accept.orderEntryTime(orderStruct.transactTime);
-
-      final int lengthwithHeader = SbeMessageHeaderDecoder.getLength() + accept.encodedLength();
-      frameEncoder.setMessageLength(lengthwithHeader);
+    private void encodeAccept(OrderStruct orderStruct, MutableDirectBuffer mutableBuffer,
+        ByteBuffer sendBuffer) {
+      int offset = 0;
+      frameEncoder.wrap(sendBuffer, offset).encodeFrameHeader();
+      offset += frameEncoder.getHeaderLength();
+      messageHeaderEncoder.wrap(mutableBuffer, offset);
+      messageHeaderEncoder.blockLength(acceptEncoder.sbeBlockLength())
+          .templateId(acceptEncoder.sbeTemplateId()).schemaId(acceptEncoder.sbeSchemaId())
+          .version(acceptEncoder.sbeSchemaVersion());
+      offset += messageHeaderEncoder.encodedLength();
+      acceptEncoder.wrap(mutableBuffer, offset);
+      acceptEncoder.transactTime(0);
+      acceptEncoder.putClOrdId(orderStruct.clOrdId, 0);
+      acceptEncoder.side(Side.Sell);
+      acceptEncoder.orderQty(1L);
+      acceptEncoder.putSymbol(orderStruct.symbol, 0);
+      acceptEncoder.price().mantissa(10000000);
+      acceptEncoder.expireTime(1000L);
+      acceptEncoder.putClientID(orderStruct.clientId, 0);
+      acceptEncoder.display(Display.AnonymousPrice);
+      acceptEncoder.orderId(++orderId);
+      acceptEncoder.orderCapacity(OrderCapacity.Agency);
+      acceptEncoder.intermarketSweepEligibility(IntermarketSweepEligibility.Eligible);
+      acceptEncoder.minimumQuantity(1L);
+      acceptEncoder.crossType(CrossType.NoCross);
+      acceptEncoder.ordStatus(OrdStatus.New);
+      acceptEncoder.bBOWeightIndicator(BBOWeight.Level0);
+      acceptEncoder.orderEntryTime(orderStruct.transactTime);
+      frameEncoder.setMessageLength(offset + acceptEncoder.encodedLength());
       frameEncoder.encodeFrameTrailer();
     }
 
@@ -357,7 +347,6 @@ public class SellSide {
   private final ConsumerSupplier consumerSupplier = new ConsumerSupplier();
   private Engine engine;
   private ExceptionConsumer exceptionConsumer = ex -> System.err.println(ex);
-  private final MessageDecoder messageDecoder = new MessageDecoder();
   private final Properties props;
 
   private final SessionConfigurationService serverConfig = new SessionConfigurationService() {
@@ -416,7 +405,7 @@ public class SellSide {
           .withTransport(createRawTransport(0)).withMessageConsumerSupplier(consumerSupplier)
           .withBufferSupplier(new SingleBufferSupplier(
               ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
-          .withFlowType(FlowType.IDEMPOTENT).build();
+          .build();
 
       sharedTransport.openUnderlyingTransport();
     }
@@ -429,7 +418,7 @@ public class SellSide {
           .withTransport(rawTransport).withMessageConsumerSupplier(consumerSupplier)
           .withBufferSupplier(new SingleBufferSupplier(
               ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
-          .withFlowType(FlowType.IDEMPOTENT).build();
+          .build();
 
       sharedTransport.openUnderlyingTransport();
     }
@@ -507,7 +496,7 @@ public class SellSide {
       Session<UUID> serverSession = fixpSessionFactory.createServerSession(serverTransport,
           new SingleBufferSupplier(
               ByteBuffer.allocateDirect(16 * 1024).order(ByteOrder.nativeOrder())),
-          consumerSupplier.get(), FlowType.IDEMPOTENT);
+          consumerSupplier.get(), FlowType.Idempotent);
 
       try {
         serverSession.open().get(1000, TimeUnit.MILLISECONDS);
@@ -562,7 +551,7 @@ public class SellSide {
           Session<UUID> serverSession = fixpSessionFactory.createServerSession(transport,
               new SingleBufferSupplier(
                   ByteBuffer.allocateDirect(16 * 1024).order(ByteOrder.nativeOrder())),
-              new ServerListener(), FlowType.IDEMPOTENT);
+              new ServerListener(), FlowType.Idempotent);
           serverSession.open().get();
           serverSessions.add(serverSession);
         }

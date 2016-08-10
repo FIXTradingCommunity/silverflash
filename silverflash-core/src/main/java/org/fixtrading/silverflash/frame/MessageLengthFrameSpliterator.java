@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ import java.util.function.Consumer;
 public class MessageLengthFrameSpliterator implements FrameSpliterator {
 
   private ByteBuffer buffer;
-  private final MessageLengthFrameDecoder decoder = new MessageLengthFrameDecoder();
+  private final MessageLengthFrameDecoder frameDecoder = new MessageLengthFrameDecoder();
   private int offset;
   private ByteOrder originalByteOrder;
 
@@ -76,9 +76,9 @@ public class MessageLengthFrameSpliterator implements FrameSpliterator {
     if (messageOffset > buffer.limit()) {
       return false;
     }
-    decoder.wrap(buffer);
-    decoder.decodeFrameHeader();
-    final int messageLength = decoder.getMessageLength();
+    frameDecoder.wrap(buffer);
+    frameDecoder.decodeFrameHeader();
+    final int messageLength = frameDecoder.getMessageLength();
     int messageLimit = offset + MessageLengthFrameDecoder.HEADER_LENGTH + messageLength;
 
     if (messageLength <= 0 || (messageLimit > buffer.limit())) {

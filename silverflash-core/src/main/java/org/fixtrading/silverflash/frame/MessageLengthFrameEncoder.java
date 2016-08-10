@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,9 +40,8 @@ public class MessageLengthFrameEncoder implements MessageFrameEncoder {
    * @see org.fixtrading.silverflash.buffer.MessageFrameEncoder#encodeFrameHeader()
    */
   @Override
-  public MessageFrameEncoder encodeFrameHeader() {
+  public MessageLengthFrameEncoder encodeFrameHeader() {
     buffer.putShort(frameStartOffset + MESSAGE_LENGTH_OFFSET, (short) (messageLength & 0xffffffff));
-    buffer.position(frameStartOffset + HEADER_LENGTH);
     return this;
   }
 
@@ -52,7 +51,7 @@ public class MessageLengthFrameEncoder implements MessageFrameEncoder {
    * @see org.fixtrading.silverflash.buffer.MessageFrameEncoder#encodeFrameTrailer()
    */
   @Override
-  public MessageFrameEncoder encodeFrameTrailer() {
+  public MessageLengthFrameEncoder encodeFrameTrailer() {
     buffer.putShort(frameStartOffset + MESSAGE_LENGTH_OFFSET, (short) (messageLength & 0xffffffff));
     buffer.position(frameStartOffset + HEADER_LENGTH + (int) messageLength);
     return this;
@@ -64,7 +63,7 @@ public class MessageLengthFrameEncoder implements MessageFrameEncoder {
    * @see org.fixtrading.silverflash.buffer.MessageFrameEncoder#setMessageLength(int)
    */
   @Override
-  public MessageFrameEncoder setMessageLength(long messageLength) {
+  public MessageLengthFrameEncoder setMessageLength(long messageLength) {
     this.messageLength = messageLength;
     return this;
   }
@@ -75,10 +74,10 @@ public class MessageLengthFrameEncoder implements MessageFrameEncoder {
    * @see org.fixtrading.silverflash.buffer.MessageFrameEncoder#wrap(java.nio.ByteBuffer)
    */
   @Override
-  public MessageFrameEncoder wrap(ByteBuffer buffer) {
+  public MessageLengthFrameEncoder wrap(ByteBuffer buffer, int offset) {
     Objects.requireNonNull(buffer);
     this.buffer = buffer;
-    this.frameStartOffset = buffer.position();
+    this.frameStartOffset = offset;
     messageLength = -1;
     return this;
   }
@@ -89,6 +88,15 @@ public class MessageLengthFrameEncoder implements MessageFrameEncoder {
   @Override
   public int getHeaderLength() {
     return HEADER_LENGTH;
+  }
+  
+  public long getEncodedLength() {
+    return messageLength + HEADER_LENGTH;
+  }
+
+  @Override
+  public MessageLengthFrameEncoder copy() {
+    return new MessageLengthFrameEncoder();
   }
 
 }

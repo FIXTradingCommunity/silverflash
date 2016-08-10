@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,16 +32,12 @@ import java.nio.ByteOrder;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.Service;
-import org.fixtrading.silverflash.fixp.FixpSession;
-import org.fixtrading.silverflash.fixp.Retransmitter;
-import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.SessionId;
-import org.fixtrading.silverflash.fixp.Sessions;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder.RetransmissionRequestEncoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.RetransmitRequestEncoder;
 import org.fixtrading.silverflash.fixp.store.InMemoryMessageStore;
 import org.fixtrading.silverflash.fixp.store.MessageStore;
 import org.fixtrading.silverflash.fixp.store.StoreException;
@@ -61,13 +57,44 @@ import org.mockito.ArgumentCaptor;
  */
 public class RetransmitterTest {
 
-  private Retransmitter retransmitter;
+  private final MessageLengthFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
+  private long lastRequestTimestamp;
+  private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
+  private final MutableDirectBuffer mutableBuffer = new UnsafeBuffer(new byte[0]);
   private EventReactor<ByteBuffer> reactor;
-  private MessageStore store;
+  private final ByteBuffer retransmissionRequestBuffer = ByteBuffer.allocate(128).order(ByteOrder.nativeOrder());
+  private final RetransmitRequestEncoder retransmitRequestEncoder = new RetransmitRequestEncoder();
+  private Retransmitter retransmitter;
   private FixpSession session;
   private Sessions sessions;
+  private MessageStore store;
   private UUID uuid = UUID.randomUUID();
-  private long lastRequestTimestamp;
+
+
+  private void notifyGap(long fromSeqNo, int count) {
+    mutableBuffer.wrap(retransmissionRequestBuffer);
+    int offset = 0;
+    frameEncoder.wrap(retransmissionRequestBuffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(retransmitRequestEncoder.sbeBlockLength())
+        .templateId(retransmitRequestEncoder.sbeTemplateId()).schemaId(retransmitRequestEncoder.sbeSchemaId())
+        .version(retransmitRequestEncoder.sbeSchemaVersion());
+    offset += messageHeaderEncoder.encodedLength();
+    byte [] sessionId = SessionId.UUIDAsBytes(uuid);
+    retransmitRequestEncoder.wrap(mutableBuffer, offset);
+    for (int i = 0; i < 16; i++) {
+      retransmitRequestEncoder.sessionId(i, sessionId[i]);
+    }
+    retransmitRequestEncoder.timestamp(lastRequestTimestamp);
+    retransmitRequestEncoder.fromSeqNo(fromSeqNo);
+    retransmitRequestEncoder.count(count);
+    frameEncoder.setMessageLength(offset + retransmitRequestEncoder.encodedLength());
+    frameEncoder.encodeFrameTrailer();
+
+    Topic retrieveTopic = SessionEventTopics.getTopic(SERVICE_STORE_RETREIVE);
+    reactor.post(retrieveTopic, retransmissionRequestBuffer);
+  }
 
   @Before
   public void setUp() throws Exception {
@@ -119,21 +146,5 @@ public class RetransmitterTest {
     verify(session).resend(messages.capture(), anyInt(), anyInt(), anyLong(), timestamp.capture());
     assertTrue(messages.getValue().length > 0);
     assertEquals(lastRequestTimestamp, timestamp.getValue().longValue());
-  }
-
-  private void notifyGap(long fromSeqNo, int count) {
-    ByteBuffer retransmissionRequestBuffer = ByteBuffer.allocate(128).order(ByteOrder.nativeOrder());
-    MessageEncoder messageEncoder = new MessageEncoder(MessageLengthFrameEncoder.class);
-    RetransmissionRequestEncoder retransmissionRequestEncoder =
-        (RetransmissionRequestEncoder) messageEncoder.wrap(retransmissionRequestBuffer,
-            0, MessageType.RETRANSMIT_REQUEST);
-
-    retransmissionRequestEncoder.setSessionId(SessionId.UUIDAsBytes(uuid));
-    retransmissionRequestEncoder.setTimestamp(lastRequestTimestamp);
-    retransmissionRequestEncoder.setFromSeqNo(fromSeqNo);
-    retransmissionRequestEncoder.setCount(count);
-
-    Topic retrieveTopic = SessionEventTopics.getTopic(SERVICE_STORE_RETREIVE);
-    reactor.post(retrieveTopic, retransmissionRequestBuffer);
   }
 }

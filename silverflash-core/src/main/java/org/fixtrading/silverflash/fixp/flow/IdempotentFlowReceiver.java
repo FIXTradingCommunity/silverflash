@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,19 +24,23 @@ import static org.fixtrading.silverflash.fixp.SessionEventTopics.ToSessionEventT
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.Sequenced;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.ContextDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.SequenceDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder.NotAppliedEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
+import org.fixtrading.silverflash.fixp.messages.ContextDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.NotAppliedDecoder;
+import org.fixtrading.silverflash.fixp.messages.NotAppliedEncoder;
+import org.fixtrading.silverflash.fixp.messages.SequenceDecoder;
+import org.fixtrading.silverflash.fixp.messages.TerminateEncoder;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;
@@ -56,39 +60,56 @@ public class IdempotentFlowReceiver extends AbstractReceiverFlow implements Flow
     public IdempotentFlowReceiver build() {
       return new IdempotentFlowReceiver(this);
     }
+
    }
 
   public static  Builder<IdempotentFlowReceiver, ? extends FlowReceiverBuilder> builder() {
     return new Builder();
   }
   
+  private final ContextDecoder contextDecoder = new ContextDecoder();
+
   private final Receiver heartbeatEvent = buffer -> {
     if (isHeartbeatDue()) {
       // **** terminated(null);
     }
   };
-
   private final TimerSchedule heartbeatSchedule;
   private final Subscription heartbeatSubscription;
+  private final DirectBuffer immutableBuffer = new UnsafeBuffer(new byte[0]);
   private boolean isEndOfStream = false;
   private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
-  private final MessageDecoder messageDecoder = new MessageDecoder();
+  private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+  private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
   private final AtomicLong nextSeqNoAccepted = new AtomicLong(1);
   private final AtomicLong nextSeqNoReceived = new AtomicLong(1);
-  private final ByteBuffer notAppliedBuffer = ByteBuffer.allocateDirect(32)
+  private final NotAppliedEncoder notAppliedEncoder = new NotAppliedEncoder();
+  private final ByteBuffer sendBuffer = ByteBuffer.allocateDirect(32)
       .order(ByteOrder.nativeOrder());
-  private final NotAppliedEncoder notAppliedEncoder;
+  private final SequenceDecoder sequenceDecoder = new SequenceDecoder();
   private final Topic terminatedTopic;
   private final Topic toSendTopic;
+  private final MutableDirectBuffer mutableBuffer = new UnsafeBuffer(sendBuffer);
+  
 
   @SuppressWarnings("rawtypes")
   protected IdempotentFlowReceiver(Builder builder) {
     super(builder);
     Objects.requireNonNull(messageConsumer);
-    notAppliedEncoder = (NotAppliedEncoder) messageEncoder.wrap(notAppliedBuffer, 0,
-        MessageType.NOT_APPLIED);
-    notAppliedEncoder.setFromSeqNo(0);
-    notAppliedEncoder.setCount(0);
+    int offset = 0;
+    frameEncoder.wrap(sendBuffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(notAppliedEncoder.sbeBlockLength())
+        .templateId(notAppliedEncoder.sbeTemplateId()).schemaId(notAppliedEncoder.sbeSchemaId())
+        .version(notAppliedEncoder.sbeSchemaVersion());
+    offset += messageHeaderEncoder.encodedLength();
+    notAppliedEncoder.wrap(mutableBuffer, offset);
+    notAppliedEncoder.fromSeqNo(0);
+    notAppliedEncoder.count(0);
+    frameEncoder.setMessageLength(offset + notAppliedEncoder.encodedLength());
+    frameEncoder.encodeFrameTrailer();
+
     toSendTopic = SessionEventTopics.getTopic(sessionId, APPLICATION_MESSAGE_TO_SEND);
     terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
 
@@ -103,31 +124,38 @@ public class IdempotentFlowReceiver extends AbstractReceiverFlow implements Flow
   }
 
   public void accept(ByteBuffer buffer) {
-    Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
-
+    immutableBuffer.wrap(buffer);
+    int offset = buffer.position();
+    messageHeaderDecoder.wrap(immutableBuffer, offset);
+    offset += messageHeaderDecoder.encodedLength();
     boolean isApplicationMessage = true;
-    if (optDecoder.isPresent()) {
-      final Decoder decoder = optDecoder.get();
-      switch (decoder.getMessageType()) {
-      case SEQUENCE:
-        accept((SequenceDecoder) decoder);
+
+    int sbeSchemaId = messageHeaderDecoder.schemaId();
+    if (sbeSchemaId == sequenceDecoder.sbeSchemaId()) {
+ 
+      switch (messageHeaderDecoder.templateId()) {
+      case SequenceDecoder.TEMPLATE_ID:
+        sequenceDecoder.wrap(immutableBuffer, offset,
+            sequenceDecoder.sbeBlockLength(), sequenceDecoder.sbeSchemaVersion());
+        onSequence(sequenceDecoder);
         isApplicationMessage = false;
         break;
-      case CONTEXT:
-        accept((ContextDecoder) decoder);
+      case ContextDecoder.TEMPLATE_ID:
+        contextDecoder.wrap(immutableBuffer, offset,
+            contextDecoder.sbeBlockLength(), contextDecoder.sbeSchemaVersion());
+        onContext(contextDecoder);
         isApplicationMessage = false;
         break;
-      case NOT_APPLIED:
+      case NotAppliedDecoder.TEMPLATE_ID:
         // System.out.println("NotApplied received");
         break;
-      case TERMINATE:
+      case TerminateEncoder.TEMPLATE_ID:
         terminated(buffer);
         isApplicationMessage = false;
         break;
       default:
 //        System.out.println("IdempotentFlowReceiver: Protocol violation; unexpected session message "
 //            + decoder.getMessageType());
-        buffer.reset();
         reactor.post(terminatedTopic, buffer);
       }
     }
@@ -145,29 +173,6 @@ public class IdempotentFlowReceiver extends AbstractReceiverFlow implements Flow
     return nextSeqNoReceived.get();
   }
 
-  @Override
-  public boolean isHeartbeatDue() {
-    return isHeartbeatDue.getAndSet(true);
-  }
-
-  void accept(ContextDecoder contextDecoder) {
-    final long newNextSeqNo = contextDecoder.getNextSeqNo();
-    handleSequence(newNextSeqNo);
-  }
-
-  void accept(SequenceDecoder sequenceDecoder) {
-    final long newNextSeqNo = sequenceDecoder.getNextSeqNo();
-    handleSequence(newNextSeqNo);
-  }
-
-  void notifyGap(long fromSeqNo, int count) {
-    // System.out.println("Gap detected");
-    notAppliedEncoder.setFromSeqNo(fromSeqNo);
-    notAppliedEncoder.setCount(count);
-    // Post this to reactor for async sending as an application message
-    reactor.post(toSendTopic, notAppliedBuffer.duplicate());
-  }
-
   private void handleSequence(final long newNextSeqNo) {
     isHeartbeatDue.set(false);
     final long prevNextSeqNo = nextSeqNoReceived.getAndSet(newNextSeqNo);
@@ -183,6 +188,29 @@ public class IdempotentFlowReceiver extends AbstractReceiverFlow implements Flow
       // messages were received
       nextSeqNoAccepted.set(newNextSeqNo);
     }
+  }
+
+  @Override
+  public boolean isHeartbeatDue() {
+    return isHeartbeatDue.getAndSet(true);
+  }
+
+  void notifyGap(long fromSeqNo, int count) {
+    // System.out.println("Gap detected");
+    notAppliedEncoder.fromSeqNo(fromSeqNo);
+    notAppliedEncoder.count(count);
+    // Post this to reactor for async sending as an application message
+    reactor.post(toSendTopic, sendBuffer.duplicate());
+  }
+
+  void onContext(ContextDecoder contextDecoder) {
+    final long newNextSeqNo = contextDecoder.nextSeqNo();
+    handleSequence(newNextSeqNo);
+  }
+
+  void onSequence(SequenceDecoder sequenceDecoder) {
+    final long newNextSeqNo = sequenceDecoder.nextSeqNo();
+    handleSequence(newNextSeqNo);
   }
 
   private void terminated(ByteBuffer buffer) {

@@ -1,13 +1,14 @@
 package org.fixtrading.silverflash.fixp.flow;
 
-import org.fixtrading.silverflash.fixp.messages.MessageType;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder.TopicEncoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.TopicEncoder;
 
 /**
  * Sends messages on an idempotent flow on a Transport that guarantees FIFO delivery. The
@@ -40,23 +41,38 @@ public class IdempotentFlowSenderWithTopic extends IdempotentFlowSender {
     return new Builder<IdempotentFlowSenderWithTopic, IdempotentFlowSender.Builder<IdempotentFlowSender, FlowBuilder>>();
   }
 
-  private final ByteBuffer topicMessageBuffer =
+  private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
+  private final ByteBuffer sendBuffer =
       ByteBuffer.allocateDirect(128).order(ByteOrder.nativeOrder());
+  private final TopicEncoder topicEncoder = new TopicEncoder();
+  private final MutableDirectBuffer mutableBuffer = new UnsafeBuffer(sendBuffer);
 
   protected IdempotentFlowSenderWithTopic(Builder builder) {
     super(builder);
     final String topic = builder.topic;
-    final TopicEncoder topicEncoder =
-        (TopicEncoder) messageEncoder.wrap(topicMessageBuffer, 0, MessageType.TOPIC);
-    topicEncoder.setFlow(FlowType.IDEMPOTENT);
-    topicEncoder.setSessionId(uuidAsBytes);
-    topicEncoder.setClassification(topic.getBytes());
+    int offset = 0;
+    frameEncoder.wrap(sendBuffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(topicEncoder.sbeBlockLength())
+        .templateId(topicEncoder.sbeTemplateId()).schemaId(topicEncoder.sbeSchemaId())
+        .version(topicEncoder.sbeSchemaVersion());
+    offset += messageHeaderEncoder.encodedLength();
+    topicEncoder.wrap(mutableBuffer, offset);
+
+    topicEncoder.flow(FlowType.Idempotent);
+    for (int i = 0; i < 16; i++) {
+      topicEncoder.sessionId(i, uuidAsBytes[i]);
+    }
+    topicEncoder.classification(topic);
+    frameEncoder.setMessageLength(offset + topicEncoder.encodedLength());
+    frameEncoder.encodeFrameTrailer();
   }
 
   @Override
   public void sendHeartbeat() throws IOException {
     if (isHeartbeatDue()) {
-      send(topicMessageBuffer);
+      send(sendBuffer);
     }
   }
 

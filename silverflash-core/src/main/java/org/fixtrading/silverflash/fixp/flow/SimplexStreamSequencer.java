@@ -1,17 +1,15 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ * Copyright 2015-2016 FIX Protocol Ltd
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software distributed under the License
+ * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+ * or implied. See the License for the specific language governing permissions and limitations under
+ * the License.
  *
  */
 
@@ -20,10 +18,14 @@ package org.fixtrading.silverflash.fixp.flow;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.buffer.BufferArrays;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder.SequenceEncoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.SequenceEncoder;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
+
+import uk.co.real_logic.sbe.ir.generated.MessageHeaderDecoder;
 
 /**
  * Applies Sequence message and updates sequence number for a simplex flow on a stream Transport
@@ -37,22 +39,35 @@ import org.fixtrading.silverflash.fixp.messages.MessageEncoder.SequenceEncoder;
  */
 public class SimplexStreamSequencer implements Sequencer, MutableSequence {
 
-  private long nextSeqNo;
-  private final ByteBuffer sequenceBuffer = ByteBuffer.allocateDirect(32).order(
-      ByteOrder.nativeOrder());
-  private final SequenceEncoder sequenceEncoder;
   private final BufferArrays arrays = new BufferArrays();
   private boolean firstTime = true;
+  private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
+  private long nextSeqNo;
+  private final ByteBuffer sequenceBuffer =
+      ByteBuffer.allocateDirect(32).order(ByteOrder.nativeOrder());
+  private final SequenceEncoder sequenceEncoder = new SequenceEncoder();
+  private final MutableDirectBuffer directBuffer = new UnsafeBuffer(sequenceBuffer);
+  private final MessageFrameEncoder frameEncoder;
 
-  public SimplexStreamSequencer(MessageEncoder messageEncoder) {
-    this(1, messageEncoder);
+  public SimplexStreamSequencer(MessageFrameEncoder frameEncoder) {
+    this(frameEncoder, 1);
   }
 
-  public SimplexStreamSequencer(long nextSeqNo, MessageEncoder messageEncoder) {
+  public SimplexStreamSequencer(MessageFrameEncoder frameEncoder, long nextSeqNo) {
+    this.frameEncoder = frameEncoder;
     this.nextSeqNo = nextSeqNo;
-    sequenceEncoder =
-        (SequenceEncoder) messageEncoder.wrap(sequenceBuffer, 0, MessageType.SEQUENCE);
-    sequenceEncoder.setNextSeqNo(nextSeqNo);
+    int offset = 0;
+    frameEncoder.wrap(sequenceBuffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(directBuffer, offset);
+    messageHeaderEncoder.blockLength(sequenceEncoder.sbeBlockLength())
+        .templateId(sequenceEncoder.sbeTemplateId()).schemaId(sequenceEncoder.sbeSchemaId())
+        .version(sequenceEncoder.sbeSchemaVersion());
+    offset += messageHeaderEncoder.encodedLength();
+    sequenceEncoder.wrap(directBuffer, offset);
+    sequenceEncoder.nextSeqNo(nextSeqNo);
+    frameEncoder.setMessageLength(offset + sequenceEncoder.encodedLength());
+    frameEncoder.encodeFrameTrailer();
   }
 
   /*
@@ -68,7 +83,7 @@ public class SimplexStreamSequencer implements Sequencer, MutableSequence {
   @Override
   public ByteBuffer[] apply(ByteBuffer[] buffers) {
     if (firstTime) {
-      sequenceEncoder.setNextSeqNo(nextSeqNo);
+      sequenceEncoder.nextSeqNo(nextSeqNo);
       ByteBuffer[] dest = arrays.getBufferArray(buffers.length + 1);
       dest[0] = sequenceBuffer;
       System.arraycopy(buffers, 0, dest, 1, buffers.length);

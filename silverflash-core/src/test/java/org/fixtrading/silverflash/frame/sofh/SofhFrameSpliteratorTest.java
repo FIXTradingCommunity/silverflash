@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,8 +56,9 @@ public class SofhFrameSpliteratorTest {
   @Test
   public void testTryAdvance() {
 
+    int offset = 0;
     for (int i = 0; i < messageCount; ++i) {
-      encodeApplicationMessage(buffer, messages[i]);
+      offset += encodeApplicationMessage(buffer, offset, messages[i]);
     }
 
     buffer.flip();
@@ -81,7 +82,7 @@ public class SofhFrameSpliteratorTest {
 
   @Test
   public void partialMessage() {
-    encodeApplicationMessage(buffer, messages[messageCount - 1]);
+    encodeApplicationMessage(buffer, 0, messages[messageCount - 1]);
     buffer.limit(buffer.position() - 1);
     buffer.flip();
     spliterator = new SofhFrameSpliterator(buffer);
@@ -92,10 +93,14 @@ public class SofhFrameSpliteratorTest {
     }));
   }
 
-  public void encodeApplicationMessage(ByteBuffer buf, ByteBuffer message) {
-    message.rewind();
+  long encodeApplicationMessage(ByteBuffer buf, int offset, ByteBuffer message) {
+    message.flip();
     int messageLength = message.remaining();
-    encoder.wrap(buf).setMessageLength(messageLength).encodeFrameHeader();
+    encoder.wrap(buf, offset).setMessageLength(messageLength).encodeFrameHeader();
+    buf.position(offset + encoder.getHeaderLength());
     buf.put(message);
+    encoder.encodeFrameTrailer();
+    
+    return encoder.getEncodedLength();
   }
 }

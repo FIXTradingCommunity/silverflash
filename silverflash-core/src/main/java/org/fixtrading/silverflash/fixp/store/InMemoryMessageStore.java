@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -87,7 +87,7 @@ public class InMemoryMessageStore implements MessageStore {
     final ArrayList<ByteBuffer> messages = messageMap.get(sessionId);
     if (messages != null) {
       int offset = (int) (result.getFromSeqNo() - 1);
-      int count = Math.min(result.getCountRequested(), messages.size() - offset);
+      int count = (int) Math.min(result.getCountRequested(), messages.size() - offset);
 
       ArrayList<ByteBuffer> arrayList = result.getMessageList();
       arrayList.clear();

@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@
 package org.fixtrading.silverflash.reactor.bridge;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.HashMap;
@@ -27,15 +26,25 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.buffer.BufferSupplier;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
+import org.fixtrading.silverflash.fixp.messages.EventDecoder;
+import org.fixtrading.silverflash.fixp.messages.EventEncoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
 import org.fixtrading.silverflash.frame.FrameSpliterator;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
+import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
 import org.fixtrading.silverflash.reactor.Dispatcher;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.Topic;
+import org.fixtrading.silverflash.reactor.Topics;
 import org.fixtrading.silverflash.transport.Transport;
 import org.fixtrading.silverflash.transport.TransportConsumer;
 
@@ -46,7 +55,6 @@ import org.fixtrading.silverflash.transport.TransportConsumer;
  * @author Don Mendelson
  *
  */
-@SuppressWarnings("Convert2MethodRef")
 public class EventReactorWithBridge extends EventReactor<ByteBuffer> {
 
   public static class Builder extends
@@ -78,10 +86,14 @@ public class EventReactorWithBridge extends EventReactor<ByteBuffer> {
 
   private static class ForwardDispatcher implements Dispatcher<ByteBuffer> {
 
-    private final ByteBuffer buffer = ByteBuffer.allocateDirect(2048)
+    private final ByteBuffer sendBuffer = ByteBuffer.allocateDirect(2048)
         .order(ByteOrder.nativeOrder());
+    private final MessageFrameEncoder frameEncoder= new MessageLengthFrameEncoder();
+    private final MessageHeaderEncoder messageHeaderEncoder =  new MessageHeaderEncoder();
     private final Receiver forwarder;
-    private final EventMessage message = new EventMessage();
+    private final EventEncoder eventEncoder = new EventEncoder();
+    private final MutableDirectBuffer mutableBuffer = new UnsafeBuffer(sendBuffer);
+    private final DirectBuffer immutableBuffer = new UnsafeBuffer(new byte[0]);
     private final Transport transport;
 
     public ForwardDispatcher(Transport transport, Receiver forwarder) {
@@ -100,12 +112,26 @@ public class EventReactorWithBridge extends EventReactor<ByteBuffer> {
     }
 
     private void forward(Topic topic, ByteBuffer payload) throws IOException {
-      buffer.clear();
-      message.attachForEncode(buffer, 0);
-      message.setTopic(topic);
+      sendBuffer.clear();
+      int offset = 0;
+      frameEncoder.wrap(sendBuffer, offset).encodeFrameHeader();
+      offset += frameEncoder.getHeaderLength();
+      messageHeaderEncoder.wrap(mutableBuffer, offset);
+      messageHeaderEncoder.blockLength(eventEncoder.sbeBlockLength())
+          .templateId(eventEncoder.sbeTemplateId()).schemaId(eventEncoder.sbeSchemaId())
+          .version(eventEncoder.sbeSchemaVersion());
+      offset += messageHeaderEncoder.encodedLength();
+      eventEncoder.wrap(mutableBuffer, offset);
+      final byte[] topicBytes = Topics.toString(topic).getBytes();
+      eventEncoder.putTopic(topicBytes, 0, topicBytes.length);
       payload.flip();
-      message.setPayload(payload);
-      transport.write(buffer);
+      immutableBuffer.wrap(payload);
+      eventEncoder.putPayload(immutableBuffer, payload.position(), payload.remaining());
+      frameEncoder.setMessageLength(offset + eventEncoder.encodedLength());
+      frameEncoder.encodeFrameTrailer();
+
+      transport.write(sendBuffer);
+
     }
 
   }
@@ -119,24 +145,27 @@ public class EventReactorWithBridge extends EventReactor<ByteBuffer> {
       16 * 1024).order(ByteOrder.nativeOrder()));
 
   private final FrameSpliterator frameSpliter = new MessageLengthFrameSpliterator();
+  private final DirectBuffer immutableBuffer = new UnsafeBuffer(new byte[0]);
+  private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
 
   private final Consumer<? super ByteBuffer> inboundReceiver = new Consumer<ByteBuffer>() {
 
-    private final EventMessage message = new EventMessage();
+    private final EventDecoder eventDecoder = new EventDecoder();
     private final ByteBuffer payload = ByteBuffer.allocateDirect(16 * 1024).order(
         ByteOrder.nativeOrder());
+    private final MutableDirectBuffer payloadBuffer = new UnsafeBuffer(payload);
 
     public void accept(ByteBuffer buffer) {
-      message.attachForDecode(buffer, 0);
-      Topic topic;
-      try {
-        topic = message.getTopic();
-        message.getPayload(payload);
+      immutableBuffer.wrap(buffer);
+      int offset = buffer.position();
+      messageHeaderDecoder.wrap(immutableBuffer, offset);
+      offset += messageHeaderDecoder.encodedLength();
+      eventDecoder.wrap(immutableBuffer, offset,
+          eventDecoder.sbeBlockLength(), eventDecoder.sbeSchemaVersion());
+      Topic topic= Topics.parse(eventDecoder.topic());
+      eventDecoder.getPayload(payloadBuffer, 0, payload.capacity());
 
-        EventReactorWithBridge.this.post(topic, payload);
-      } catch (UnsupportedEncodingException e) {
-        exceptionConsumer.accept(e);
-      }
+      EventReactorWithBridge.this.post(topic, payload);
     }
   };
 

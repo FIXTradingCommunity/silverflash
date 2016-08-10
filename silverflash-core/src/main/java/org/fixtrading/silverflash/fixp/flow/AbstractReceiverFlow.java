@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import org.fixtrading.silverflash.ExceptionConsumer;
 import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.fixp.SessionId;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.transport.Transport;
 
@@ -35,27 +35,41 @@ import org.fixtrading.silverflash.transport.Transport;
 class AbstractReceiverFlow {
 
   static abstract class Builder<T, B extends Builder<T, B>> implements FlowReceiverBuilder<T, B> {
-    private MessageEncoder messageEncoder;
-    private int keepaliveInterval;
+    private ExceptionConsumer exceptionHandler;
+    private MessageFrameEncoder frameEncoder;
+    private long keepaliveInterval;
+    private MessageConsumer<UUID> messageConsumer;
     private EventReactor<ByteBuffer> reactor;
     private Sequencer sequencer;
+    private Session<UUID> session;
     private UUID sessionId;
     private Transport transport;
-    private MessageConsumer<UUID> messageConsumer;
-    private Session<UUID> session;
-    private ExceptionConsumer exceptionHandler;
 
       public abstract T build();
 
-    @Override
-    public B withKeepaliveInterval(int keepaliveInterval) {
-      this.keepaliveInterval = keepaliveInterval;
+    public B withExceptionConsumer(ExceptionConsumer exceptionHandler) {
+      this.exceptionHandler = exceptionHandler;
       return (B) this;
     }
 
     @Override
-    public B withMessageEncoder(MessageEncoder encoder) {
-      this.messageEncoder = encoder;
+    public B withKeepaliveInterval(long keepaliveInterval) {
+      this.keepaliveInterval = keepaliveInterval;
+      return (B) this;
+    }
+
+     public B withMessageConsumer(MessageConsumer<UUID> messageConsumer) {
+      this.messageConsumer = messageConsumer;
+      return (B) this;
+    }
+
+    /**
+     * Provide a message frame encoder for messages to be sent.
+     * @param frameEncoder the MessageFrameEncoder to use for sent messages
+     * @return this Builder
+     */
+    public B withMessageFrameEncoder(MessageFrameEncoder frameEncoder) {
+      this.frameEncoder = frameEncoder;
       return (B) this;
     }
 
@@ -64,13 +78,18 @@ class AbstractReceiverFlow {
       this.reactor = reactor;
       return (B) this;
     }
-
-     @Override
+    
+    @Override
     public B withSequencer(Sequencer sequencer) {
       this.sequencer = sequencer;
       return (B) this;
     }
-
+    
+    public B withSession(Session<UUID> session) {
+      this.session = session;
+      return (B) this;
+    }
+    
     @Override
     public B withSessionId(UUID sessionId) {
       this.sessionId = sessionId;
@@ -82,32 +101,18 @@ class AbstractReceiverFlow {
       this.transport = transport;
       return (B) this;
     }
-    
-    public B withMessageConsumer(MessageConsumer<UUID> messageConsumer) {
-      this.messageConsumer = messageConsumer;
-      return (B) this;
-    }
-    public B withSession(Session<UUID> session) {
-      this.session = session;
-      return (B) this;
-    }
-
-    public B withExceptionConsumer(ExceptionConsumer exceptionHandler) {
-      this.exceptionHandler = exceptionHandler;
-      return (B) this;
-    }
   }
 
-  protected final MessageEncoder messageEncoder;
-  protected final int keepaliveInterval;
+  protected final ExceptionConsumer exceptionConsumer;
+  protected final MessageFrameEncoder frameEncoder;
+  protected final long keepaliveInterval;
+  protected final MessageConsumer<UUID> messageConsumer;
   protected final EventReactor<ByteBuffer> reactor;
   protected final Sequencer sequencer;
+  protected final Session<UUID> session;
   protected final UUID sessionId;
   protected final Transport transport;
   protected final byte[] uuidAsBytes;
-  protected final MessageConsumer<UUID> messageConsumer;
-  protected final Session<UUID> session;
-  protected final ExceptionConsumer exceptionConsumer;
 
   protected AbstractReceiverFlow(Builder<?, ?> builder) {
     Objects.requireNonNull(builder.reactor);
@@ -116,9 +121,9 @@ class AbstractReceiverFlow {
     this.reactor = builder.reactor;
     this.transport = builder.transport;
     this.sequencer = builder.sequencer;
-    this.messageEncoder = builder.messageEncoder;
     this.keepaliveInterval = builder.keepaliveInterval;
     this.messageConsumer = builder.messageConsumer;
+    this.frameEncoder = builder.frameEncoder;
     this.session = builder.session;
     this.sessionId = session.getSessionId();
     this.uuidAsBytes = SessionId.UUIDAsBytes(sessionId);

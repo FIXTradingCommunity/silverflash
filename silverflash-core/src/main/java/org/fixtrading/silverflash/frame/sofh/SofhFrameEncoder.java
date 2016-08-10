@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,11 +46,10 @@ public class SofhFrameEncoder implements MessageFrameEncoder {
    * @see org.fixtrading.silverflash.buffer.MessageFrameEncoder#encodeFrameHeader()
    */
   @Override
-  public MessageFrameEncoder encodeFrameHeader() {
+  public SofhFrameEncoder encodeFrameHeader() {
     buffer.order(ByteOrder.BIG_ENDIAN);
     buffer.putInt(frameStartOffset + MESSAGE_LENGTH_OFFSET, (int) (messageLength & 0xffffffff));
     buffer.putShort(frameStartOffset + ENCODING_OFFSET, encoding);
-    buffer.position(frameStartOffset + HEADER_LENGTH);
     buffer.order(originalByteOrder);
     return this;
   }
@@ -61,7 +60,7 @@ public class SofhFrameEncoder implements MessageFrameEncoder {
    * @see org.fixtrading.silverflash.buffer.MessageFrameEncoder#encodeFrameTrailer()
    */
   @Override
-  public MessageFrameEncoder encodeFrameTrailer() {
+  public SofhFrameEncoder encodeFrameTrailer() {
     buffer.order(ByteOrder.BIG_ENDIAN);
     buffer.putInt(frameStartOffset + MESSAGE_LENGTH_OFFSET, (int) (messageLength & 0xffffffff));
     buffer.putShort(frameStartOffset + ENCODING_OFFSET, encoding);
@@ -70,7 +69,7 @@ public class SofhFrameEncoder implements MessageFrameEncoder {
     return this;
   }
 
-  public MessageFrameEncoder setEncoding(short code) {
+  public SofhFrameEncoder setEncoding(short code) {
     this.encoding = code;
     return this;
   }
@@ -81,7 +80,7 @@ public class SofhFrameEncoder implements MessageFrameEncoder {
    * @see org.fixtrading.silverflash.buffer.MessageFrameEncoder#setMessageLength(int)
    */
   @Override
-  public MessageFrameEncoder setMessageLength(long messageLength) {
+  public SofhFrameEncoder setMessageLength(long messageLength) {
     this.messageLength = messageLength;
     return this;
   }
@@ -92,11 +91,11 @@ public class SofhFrameEncoder implements MessageFrameEncoder {
    * @see org.fixtrading.silverflash.buffer.MessageFrameEncoder#wrap(java.nio.ByteBuffer)
    */
   @Override
-  public MessageFrameEncoder wrap(ByteBuffer buffer) {
+  public SofhFrameEncoder wrap(ByteBuffer buffer, int offset) {
     Objects.requireNonNull(buffer);
     this.buffer = buffer;
     this.originalByteOrder = buffer.order();
-    this.frameStartOffset = buffer.position();
+    this.frameStartOffset = offset;
     messageLength = -1;
     return this;
   }
@@ -109,4 +108,12 @@ public class SofhFrameEncoder implements MessageFrameEncoder {
     return HEADER_LENGTH;
   }
 
+  public long getEncodedLength() {
+    return messageLength + HEADER_LENGTH;
+  }
+
+  @Override
+  public MessageFrameEncoder copy() {
+    return new SofhFrameEncoder();
+  }
 }

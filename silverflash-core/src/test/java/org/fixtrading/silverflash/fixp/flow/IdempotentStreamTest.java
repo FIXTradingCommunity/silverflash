@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,9 @@ import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.MessageConsumer;
 import org.fixtrading.silverflash.Session;
 import org.fixtrading.silverflash.buffer.SingleBufferSupplier;
@@ -35,10 +38,9 @@ import org.fixtrading.silverflash.fixp.SessionId;
 import org.fixtrading.silverflash.fixp.flow.IdempotentFlowReceiver;
 import org.fixtrading.silverflash.fixp.flow.IdempotentFlowSender;
 import org.fixtrading.silverflash.fixp.flow.IdempotentFlowSender.Builder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
 import org.fixtrading.silverflash.fixp.flow.SimplexSequencer;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
 import org.fixtrading.silverflash.transport.PipeTransport;
@@ -50,19 +52,37 @@ import org.junit.Test;
 
 public class IdempotentStreamTest {
 
+  class TestReceiver implements MessageConsumer<UUID> {
+    int bytesReceived = 0;
+    private final DirectBuffer immutableBuffer = new UnsafeBuffer(new byte[0]);
+    private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+    int messagesReceived = 0;
+
+    @Override
+    public void accept(ByteBuffer buffer, Session<UUID> session, long seqNo) {
+      immutableBuffer.wrap(buffer);
+      messageHeaderDecoder.wrap(immutableBuffer, buffer.position());
+      if (messageHeaderDecoder.schemaId() == schemaId) {
+
+        bytesReceived += messageHeaderDecoder.blockLength();
+       } else {
+        assertEquals("Schema mismatch", schemaId, messageHeaderDecoder.schemaId());
+      }
+      messagesReceived++;
+    }
+
+    public int getBytesReceived() {
+      return bytesReceived;
+    }
+
+    public int getMessagesReceived() {
+      return messagesReceived;
+    }
+  }
+
   class TestSession implements Session<UUID> {
 
     private final UUID sessionId = UUID.randomUUID();
-
-    /*
-     * (non-Javadoc)
-     * 
-     * @see org.fixtrading.silverflash.Sender#send(java.nio.ByteBuffer)
-     */
-    public long send(ByteBuffer message) throws IOException {
-      // TODO Auto-generated method stub
-      return 0;
-    }
 
     /*
      * (non-Javadoc)
@@ -92,88 +112,127 @@ public class IdempotentStreamTest {
       return null;
     }
 
+    /*
+     * (non-Javadoc)
+     * 
+     * @see org.fixtrading.silverflash.Sender#send(java.nio.ByteBuffer)
+     */
+    public long send(ByteBuffer message) throws IOException {
+      // TODO Auto-generated method stub
+      return 0;
+    }
+
   }
 
-  class TestReceiver implements MessageConsumer<UUID> {
-    int bytesReceived = 0;
-    int messagesReceived = 0;
-    private byte[] dst = new byte[16 * 1024];
-    private SbeMessageHeaderDecoder header = new SbeMessageHeaderDecoder();
-
-    @Override
-    public void accept(ByteBuffer buf, Session<UUID> session, long seqNo) {
-      header.wrap(buf, buf.position());
-      bytesReceived += header.getBlockLength();
-      buf.get(dst, SbeMessageHeaderDecoder.getLength(), header.getBlockLength());
-      messagesReceived++;
-    }
-
-    public int getMessagesReceived() {
-      return messagesReceived;
-    }
-
-    public int getBytesReceived() {
-      return bytesReceived;
-    }
-  }
-
+  private Engine engine;
+  private MessageLengthFrameEncoder frameEncoder = new MessageLengthFrameEncoder();
+  private int keepAliveInterval = 500;
   private PipeTransport memoryTransport;
-  final int messageCount = Byte.MAX_VALUE;
+  final int messageCount = 200;
+  private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
   private byte[][] messages;
+  private MutableDirectBuffer mutableBuffer = new UnsafeBuffer(new byte[0]);
   private final int schemaId = 13;
   private final int schemaVersion = 1;
   private TestReceiver serverReceiver;
   private Transport serverTransport;
   private IdempotentFlowReceiver streamReceiver;
   private final int templateId = 26;
-  private int keepAliveInterval = 500;
-  private Engine engine;
-  private MessageLengthFrameEncoder frameEncoder;
-  private SbeMessageHeaderEncoder sbeEncoder;
 
-  public void encodeApplicationMessage(ByteBuffer buf, byte[] message) {
-    frameEncoder.wrap(buf);
-    frameEncoder.encodeFrameHeader();
-    sbeEncoder.wrap(buf, frameEncoder.getHeaderLength()).setBlockLength(message.length).setTemplateId(templateId)
-        .setSchemaId(schemaId).getSchemaVersion(schemaVersion);
-    buf.put(message, 0, message.length);
-    frameEncoder.setMessageLength(message.length + SbeMessageHeaderDecoder.getLength());
-    frameEncoder.encodeFrameTrailer();
-  }
+  @Test
+  public void duplicateSend() throws Exception {
 
-  @Before
-  public void setUp() throws Exception {
-    frameEncoder = new MessageLengthFrameEncoder();
-    sbeEncoder = new SbeMessageHeaderEncoder();
+    TransportConsumer frameReceiver = new TransportConsumer() {
+      private final MessageLengthFrameSpliterator spliter = new MessageLengthFrameSpliterator();
 
-    messages = new byte[messageCount][];
-    for (int i = 0; i < messageCount; ++i) {
-      messages[i] = new byte[i];
-      Arrays.fill(messages[i], (byte) i);
+      @Override
+      public void accept(ByteBuffer buffer) {
+        spliter.wrap(buffer);
+        spliter.forEachRemaining(streamReceiver);
+      }
+
+      @Override
+      public void connected() {
+        // TODO Auto-generated method stub
+
+      }
+
+      @Override
+      public void disconnected() {
+        // TODO Auto-generated method stub
+
+      }
+    };
+
+    serverTransport.open(
+        new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())),
+        frameReceiver);
+
+    Transport clientTransport = memoryTransport.getClientTransport();
+    TransportConsumer callbackReceiver = new TransportConsumer() {
+
+      @Override
+      public void accept(ByteBuffer t) {
+        fail("Callback not expected");
+      }
+
+      @Override
+      public void connected() {
+        // TODO Auto-generated method stub
+
+      }
+
+      @Override
+      public void disconnected() {
+        // TODO Auto-generated method stub
+
+      }
+
+    };
+    clientTransport.open(
+        new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),
+        callbackReceiver);
+    UUID uuid = SessionId.generateUUID();
+    final SimplexSequencer sequencer = new SimplexSequencer(frameEncoder);
+
+    Builder<IdempotentFlowSender, FlowBuilder> builder = IdempotentFlowSender.builder();
+    builder.withKeepaliveInterval(keepAliveInterval).withReactor(engine.getReactor())
+    .withSessionId(uuid).withTransport(clientTransport).withSequencer(sequencer);
+    IdempotentFlowSender sender = builder.build();
+
+    ByteBuffer buf = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
+    buf.clear();
+    byte[] msg = "Hello world".getBytes();
+    encodeApplicationMessage(buf, msg);
+    sender.send(buf);
+    buf.position(buf.limit());
+    // Resend with nextSeqNo=1
+    sequencer.setNextSeqNo(1);
+    sender.send(buf);
+
+    try {
+      Thread.sleep(500);
+    } catch (InterruptedException e) {
+
     }
 
-    engine = Engine.builder().build();
-    engine.open();
-
-    memoryTransport = new PipeTransport(engine.getIOReactor().getSelector());
-    serverTransport = memoryTransport.getServerTransport();
-    serverReceiver = new TestReceiver();
-    
-    final MessageEncoder messageEncoder = new MessageEncoder(MessageLengthFrameEncoder.class);
-
-    IdempotentFlowReceiver.Builder<IdempotentFlowReceiver, ? extends FlowReceiverBuilder> builder = IdempotentFlowReceiver.builder();
-    builder.withMessageConsumer(serverReceiver)
-    .withSession(new TestSession())
-    .withKeepaliveInterval(keepAliveInterval)
-    .withReactor(engine.getReactor())
-     .withTransport(serverTransport)
-    .withMessageEncoder(messageEncoder);
-    streamReceiver = builder.build();
+    assertEquals(1, serverReceiver.getMessagesReceived());
   }
 
-  @After
-  public void tearDown() {
-    engine.close();
+  void encodeApplicationMessage(ByteBuffer buffer, byte[] message) {
+    int offset = 0;
+    mutableBuffer.wrap(buffer);
+    frameEncoder.wrap(buffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(message.length)
+        .templateId(templateId).schemaId(schemaId)
+        .version(schemaVersion);
+    offset += MessageHeaderEncoder.ENCODED_LENGTH; 
+    buffer.position(offset);
+    buffer.put(message, 0, message.length);
+    frameEncoder.setMessageLength(message.length + MessageHeaderEncoder.ENCODED_LENGTH);
+    frameEncoder.encodeFrameTrailer();
   }
 
   @Test
@@ -230,13 +289,11 @@ public class IdempotentStreamTest {
         new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),
         callbackReceiver);
     UUID uuid = SessionId.generateUUID();
-    final MessageEncoder messageEncoder = new MessageEncoder(MessageLengthFrameEncoder.class);
-    SimplexSequencer sequencer = new SimplexSequencer(messageEncoder);
+    SimplexSequencer sequencer = new SimplexSequencer(frameEncoder);
 
     Builder<IdempotentFlowSender, FlowBuilder> builder = IdempotentFlowSender.builder();
     builder.withKeepaliveInterval(keepAliveInterval).withReactor(engine.getReactor())
-    .withSessionId(uuid).withTransport(clientTransport).withSequencer(sequencer)
-    .withMessageEncoder(messageEncoder);
+    .withSessionId(uuid).withTransport(clientTransport).withSequencer(sequencer);
     IdempotentFlowSender sender = builder.build();
 
     ByteBuffer buf = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
@@ -249,7 +306,7 @@ public class IdempotentStreamTest {
     }
 
     try {
-      Thread.sleep(500);
+      Thread.sleep(1000);
     } catch (InterruptedException e) {
 
     }
@@ -258,84 +315,33 @@ public class IdempotentStreamTest {
     assertEquals(bytesSent, serverReceiver.getBytesReceived());
   }
 
-  @Test
-  public void duplicateSend() throws Exception {
-
-    TransportConsumer frameReceiver = new TransportConsumer() {
-      private final MessageLengthFrameSpliterator spliter = new MessageLengthFrameSpliterator();
-
-      @Override
-      public void accept(ByteBuffer buffer) {
-        spliter.wrap(buffer);
-        spliter.forEachRemaining(streamReceiver);
-      }
-
-      @Override
-      public void connected() {
-        // TODO Auto-generated method stub
-
-      }
-
-      @Override
-      public void disconnected() {
-        // TODO Auto-generated method stub
-
-      }
-    };
-
-    serverTransport.open(
-        new SingleBufferSupplier(ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())),
-        frameReceiver);
-
-    Transport clientTransport = memoryTransport.getClientTransport();
-    TransportConsumer callbackReceiver = new TransportConsumer() {
-
-      @Override
-      public void accept(ByteBuffer t) {
-        fail("Callback not expected");
-      }
-
-      @Override
-      public void connected() {
-        // TODO Auto-generated method stub
-
-      }
-
-      @Override
-      public void disconnected() {
-        // TODO Auto-generated method stub
-
-      }
-
-    };
-    clientTransport.open(
-        new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),
-        callbackReceiver);
-    UUID uuid = SessionId.generateUUID();
-    final MessageEncoder messageEncoder = new MessageEncoder(MessageLengthFrameEncoder.class);
-    final SimplexSequencer sequencer = new SimplexSequencer(messageEncoder);
-
-    Builder<IdempotentFlowSender, FlowBuilder> builder = IdempotentFlowSender.builder();
-    builder.withKeepaliveInterval(keepAliveInterval).withReactor(engine.getReactor())
-    .withSessionId(uuid).withTransport(clientTransport).withSequencer(sequencer)
-    .withMessageEncoder(messageEncoder);
-    IdempotentFlowSender sender = builder.build();
-
-    ByteBuffer buf = ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder());
-    buf.clear();
-    byte[] msg = "Hello world".getBytes();
-    encodeApplicationMessage(buf, msg);
-    sender.send(buf);
-    buf.position(buf.limit());
-    sequencer.setNextSeqNo(0);
-    sender.send(buf);
-
-    try {
-      Thread.sleep(500);
-    } catch (InterruptedException e) {
-
+  @Before
+  public void setUp() throws Exception {
+    messages = new byte[messageCount][];
+    for (int i = 0; i < messageCount; ++i) {
+      messages[i] = new byte[i];
+      Arrays.fill(messages[i], (byte) i);
     }
 
-    assertEquals(1, serverReceiver.getMessagesReceived());
+    engine = Engine.builder().build();
+    engine.open();
+
+    memoryTransport = new PipeTransport(engine.getIOReactor().getSelector());
+    serverTransport = memoryTransport.getServerTransport();
+    serverReceiver = new TestReceiver();
+    
+    IdempotentFlowReceiver.Builder<IdempotentFlowReceiver, ? extends FlowReceiverBuilder> builder = IdempotentFlowReceiver.builder();
+    builder.withMessageConsumer(serverReceiver)
+    .withSession(new TestSession())
+    .withKeepaliveInterval(keepAliveInterval)
+    .withReactor(engine.getReactor())
+    .withTransport(serverTransport)
+    .withMessageFrameEncoder(frameEncoder);
+     streamReceiver = builder.build();
+  }
+
+  @After
+  public void tearDown() {
+    engine.close();
   }
 }

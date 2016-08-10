@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ public class SofhFrameDecoder implements MessageFrameDecoder {
    * @see org.fixtrading.silverflash.frame.sofh.MessageFrameDecoder#decodeFrameHeader()
    */
   @Override
-  public MessageFrameDecoder decodeFrameHeader() {
+  public SofhFrameDecoder decodeFrameHeader() {
     buffer.order(ByteOrder.BIG_ENDIAN);
     messageLength = buffer.getInt(frameStartOffset + MESSAGE_LENGTH_OFFSET);
     encoding = buffer.getShort(frameStartOffset + ENCODING_OFFSET);
@@ -61,7 +61,7 @@ public class SofhFrameDecoder implements MessageFrameDecoder {
    * @see org.fixtrading.silverflash.frame.sofh.MessageFrameDecoder#decodeFrameTrailer()
    */
   @Override
-  public MessageFrameDecoder decodeFrameTrailer() {
+  public SofhFrameDecoder decodeFrameTrailer() {
     return this;
   }
 
@@ -85,7 +85,7 @@ public class SofhFrameDecoder implements MessageFrameDecoder {
    * @see org.fixtrading.silverflash.frame.sofh.MessageFrameDecoder#wrap(java.nio.ByteBuffer)
    */
   @Override
-  public MessageFrameDecoder wrap(ByteBuffer buffer) {
+  public SofhFrameDecoder wrap(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     this.buffer = buffer;
     this.originalByteOrder = buffer.order();
@@ -94,4 +94,13 @@ public class SofhFrameDecoder implements MessageFrameDecoder {
     return this;
   }
 
+  @Override
+  public MessageFrameDecoder copy() {
+    return new SofhFrameDecoder();
+  }
+
+  @Override
+  public int getHeaderLength() {
+    return HEADER_LENGTH;
+  }
 }

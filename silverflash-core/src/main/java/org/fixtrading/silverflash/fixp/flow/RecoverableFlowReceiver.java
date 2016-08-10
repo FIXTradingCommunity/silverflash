@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,20 +26,24 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.Sequenced;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.RetransmissionDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.SequenceDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder.RetransmissionRequestEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
-import org.fixtrading.silverflash.fixp.messages.SbeMessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.flow.NoneFlowReceiver.Builder;
+import org.fixtrading.silverflash.fixp.messages.FinishedSendingDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.RetransmissionDecoder;
+import org.fixtrading.silverflash.fixp.messages.RetransmitRequestEncoder;
+import org.fixtrading.silverflash.fixp.messages.SequenceDecoder;
+import org.fixtrading.silverflash.fixp.messages.TerminateDecoder;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;
@@ -60,6 +64,7 @@ public class RecoverableFlowReceiver extends AbstractReceiverFlow
     public RecoverableFlowReceiver build() {
       return new RecoverableFlowReceiver(this);
     }
+
   }
 
   public static Builder<RecoverableFlowReceiver, ? extends FlowReceiverBuilder> builder() {
@@ -80,25 +85,38 @@ public class RecoverableFlowReceiver extends AbstractReceiverFlow
   private final AtomicBoolean isRetransmission = new AtomicBoolean();
   private long lastRequestTimestamp = 0L;
   private long lastRetransSeqNoToAccept = 0;
-  private final MessageDecoder messageDecoder = new MessageDecoder();
   private final AtomicLong nextRetransSeqNoReceived = new AtomicLong(1);
   private final AtomicLong nextSeqNoAccepted = new AtomicLong(1);
   private final AtomicLong nextSeqNoReceived = new AtomicLong(1);
-  private final ByteBuffer retransmissionRequestBuffer = ByteBuffer.allocateDirect(64)
+  private final ByteBuffer sendBuffer = ByteBuffer.allocateDirect(64)
       .order(ByteOrder.nativeOrder());
-  private final RetransmissionRequestEncoder retransmissionRequestEncoder;
+  private final RetransmitRequestEncoder retransmitRequestEncoder = new RetransmitRequestEncoder();
   private final byte[] retransSessionId = new byte[16];
   private final Topic retrieveTopic;
   private final Topic terminatedTopic;
+  private final MutableDirectBuffer mutableBuffer = new UnsafeBuffer(sendBuffer);
+  private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
+  private final DirectBuffer immutableBuffer = new UnsafeBuffer(new byte[0]);
+  private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+  private final SequenceDecoder sequenceDecoder = new SequenceDecoder();
+  private final RetransmissionDecoder retransmissionDecoder = new RetransmissionDecoder();
+
 
   protected RecoverableFlowReceiver(Builder builder) {
     super(builder);
     Objects.requireNonNull(messageConsumer);
+    int offset = 0;
+    frameEncoder.wrap(sendBuffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(retransmitRequestEncoder.sbeBlockLength())
+        .templateId(retransmitRequestEncoder.sbeTemplateId()).schemaId(retransmitRequestEncoder.sbeSchemaId())
+        .version(retransmitRequestEncoder.sbeSchemaVersion());
+    offset += messageHeaderEncoder.encodedLength();
+    retransmitRequestEncoder.wrap(mutableBuffer, offset);
+    frameEncoder.setMessageLength(offset + retransmitRequestEncoder.encodedLength());
+    frameEncoder.encodeFrameTrailer();
 
-    retransmissionRequestEncoder = (RetransmissionRequestEncoder) messageEncoder
-        .wrap(retransmissionRequestBuffer, 0, MessageType.RETRANSMIT_REQUEST);
-    retransmissionRequestBuffer
-        .limit(SbeMessageHeaderDecoder.getLength() + retransmissionRequestEncoder.getBlockLength());
     retrieveTopic = SessionEventTopics.getTopic(SERVICE_STORE_RETREIVE);
     terminatedTopic = SessionEventTopics.getTopic(sessionId, PEER_TERMINATED);
     finishedTopic = SessionEventTopics.getTopic(sessionId, SESSION_FINISHED);
@@ -109,26 +127,32 @@ public class RecoverableFlowReceiver extends AbstractReceiverFlow
   }
 
   public void accept(ByteBuffer buffer) {
-    Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
-    // if not a known message type, assume it's an application
-    // message
+    immutableBuffer.wrap(buffer);
+    int offset = buffer.position();
+    messageHeaderDecoder.wrap(immutableBuffer, offset);
     boolean isApplicationMessage = true;
-    if (optDecoder.isPresent()) {
-      final Decoder decoder = optDecoder.get();
-      switch (decoder.getMessageType()) {
-      case SEQUENCE:
-        accept((SequenceDecoder) decoder);
+    offset += messageHeaderDecoder.encodedLength();
+
+    if (messageHeaderDecoder.schemaId() == sequenceDecoder.sbeSchemaId()) {
+ 
+      switch (messageHeaderDecoder.templateId()) {
+      case SequenceDecoder.TEMPLATE_ID:
+        sequenceDecoder.wrap(immutableBuffer, offset,
+        sequenceDecoder.sbeBlockLength(), sequenceDecoder.sbeSchemaVersion());
+        onSequence(sequenceDecoder);
         isApplicationMessage = false;
         break;
-      case RETRANSMISSION:
-        accept((RetransmissionDecoder) decoder);
+      case RetransmissionDecoder.TEMPLATE_ID:
+        retransmissionDecoder.wrap(immutableBuffer, offset,
+        retransmissionDecoder.sbeBlockLength(), sequenceDecoder.sbeSchemaVersion());
+        onRetransmission(retransmissionDecoder, buffer);
         isApplicationMessage = false;
         break;
-      case FINISHED_SENDING:
+      case FinishedSendingDecoder.TEMPLATE_ID:
         finished(buffer);
         isApplicationMessage = false;
         break;
-      case TERMINATE:
+      case TerminateDecoder.TEMPLATE_ID:
         terminated(buffer);
         isApplicationMessage = false;
         break;
@@ -136,7 +160,6 @@ public class RecoverableFlowReceiver extends AbstractReceiverFlow
 //          System.out
 //              .println("RecoverableFlowReceiver: Protocol violation; unexpected session message "
 //                  + decoder.getMessageType());
-        buffer.reset();
         reactor.post(terminatedTopic, buffer);
       }
     }
@@ -156,27 +179,27 @@ public class RecoverableFlowReceiver extends AbstractReceiverFlow
     }
   }
 
-  void accept(RetransmissionDecoder decoder) {
-    decoder.getSessionId(retransSessionId, 0);
-    long retransSeqNo = decoder.getNextSeqNo();
-    long timestamp = decoder.getRequestTimestamp();
-    int count = decoder.getCount();
+  void onRetransmission(RetransmissionDecoder decoder, ByteBuffer buffer) {
+    for (int i = 0; i < 16; i++) {
+      retransSessionId[i] = (byte) decoder.sessionId(i);
+    }
+    long retransSeqNo = decoder.nextSeqNo();
+    long timestamp = decoder.requestTimestamp();
+    long count = decoder.count();
 
     if (timestamp == lastRequestTimestamp && Arrays.equals(uuidAsBytes, retransSessionId)) {
       nextRetransSeqNoReceived.set(retransSeqNo);
       lastRetransSeqNoToAccept = retransSeqNo + count;
       isRetransmission.set(true);
     } else {
-      ByteBuffer buffer = decoder.getBuffer();
       // System.err.println("Protocol violation; unsolicited retransmission");
-      buffer .reset();
       reactor.post(terminatedTopic, buffer);
     }
   }
 
-  void accept(SequenceDecoder sequenceDecoder) {
+  void onSequence(SequenceDecoder sequenceDecoder) {
     isHeartbeatDue.set(false);
-    final long newNextSeqNo = sequenceDecoder.getNextSeqNo();
+    final long newNextSeqNo = sequenceDecoder.nextSeqNo();
     final long prevNextSeqNo = nextSeqNoReceived.getAndSet(newNextSeqNo);
     // todo: protocol violation if less than previous seq?
     final long accepted = nextSeqNoAccepted.get();
@@ -211,13 +234,15 @@ public class RecoverableFlowReceiver extends AbstractReceiverFlow
   }
 
   void notifyGap(long fromSeqNo, int count) {
-    retransmissionRequestEncoder.setSessionId(uuidAsBytes);
+    for (int i = 0; i < 16; i++) {
+      retransmitRequestEncoder.sessionId(i, uuidAsBytes[i]);
+    }
     lastRequestTimestamp = System.nanoTime();
-    retransmissionRequestEncoder.setTimestamp(lastRequestTimestamp);
-    retransmissionRequestEncoder.setFromSeqNo(fromSeqNo);
-    retransmissionRequestEncoder.setCount(count);
+    retransmitRequestEncoder.timestamp(lastRequestTimestamp);
+    retransmitRequestEncoder.fromSeqNo(fromSeqNo);
+    retransmitRequestEncoder.count(count);
     // Post this to reactor for async message retrieval and retransmission
-    reactor.post(retrieveTopic, retransmissionRequestBuffer);
+    reactor.post(retrieveTopic, sendBuffer);
   }
 
   private void terminated(ByteBuffer buffer) {

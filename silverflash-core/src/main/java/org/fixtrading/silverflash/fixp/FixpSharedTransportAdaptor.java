@@ -1,5 +1,5 @@
 /**
- * Copyright 2015 FIX Protocol Ltd
+ * Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -20,9 +20,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageSessionIdentifier;
-import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
+import org.fixtrading.silverflash.fixp.MessageSessionIdentifier;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.transport.IdentifiableTransportConsumer;
 import org.fixtrading.silverflash.transport.SharedTransportDecorator;
@@ -48,12 +46,10 @@ public class FixpSharedTransportAdaptor extends SharedTransportDecorator<UUID> {
       extends SharedTransportDecorator.Builder<UUID, FixpSharedTransportAdaptor, Builder> {
 
     public Function<UUID, IdentifiableTransportConsumer<UUID>> consumerSupplier;
-    public FlowType flowType;
     public EventReactor<ByteBuffer> reactor;
 
     protected Builder() {
       super();
-      this.withMessageFramer(new MessageLengthFrameSpliterator());
       this.withMessageIdentifer(new MessageSessionIdentifier());
     }
 
@@ -68,11 +64,6 @@ public class FixpSharedTransportAdaptor extends SharedTransportDecorator<UUID> {
 
     public Builder withMessageConsumerSupplier(Function<UUID, IdentifiableTransportConsumer<UUID>> consumerSupplier) {
       this.consumerSupplier = consumerSupplier;
-      return this;
-    }
-
-    public Builder withFlowType(FlowType flowType) {
-      this.flowType = flowType;
       return this;
     }
 
@@ -103,10 +94,12 @@ public class FixpSharedTransportAdaptor extends SharedTransportDecorator<UUID> {
       TransportConsumer consumer;
       if (lastId != null) {
         consumer = getConsumer(lastId);
+        //System.out.format("SharedTransportDecorator: Session searched %s%n", lastId.toString());
 
         if (consumer == null) {
           consumer = consumerSupplier.apply(uuid);
           addSession(uuid, consumer);
+          //System.out.format("SharedTransportDecorator: Session added %s%n", uuid.toString());
         }
         
         if (consumer != null) {

@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,28 +27,29 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.Sender;
 import org.fixtrading.silverflash.fixp.Establisher;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
 import org.fixtrading.silverflash.fixp.SessionId;
 import org.fixtrading.silverflash.fixp.auth.AuthenticationClient;
 import org.fixtrading.silverflash.fixp.auth.AuthenticationListener;
-import org.fixtrading.silverflash.fixp.messages.EstablishmentReject;
+import org.fixtrading.silverflash.fixp.messages.EstablishDecoder;
+import org.fixtrading.silverflash.fixp.messages.EstablishmentAckEncoder;
+import org.fixtrading.silverflash.fixp.messages.EstablishmentRejectCode;
+import org.fixtrading.silverflash.fixp.messages.EstablishmentRejectEncoder;
 import org.fixtrading.silverflash.fixp.messages.FlowType;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
-import org.fixtrading.silverflash.fixp.messages.NegotiationReject;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.Decoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.EstablishDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageDecoder.NegotiateDecoder;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder.EstablishmentAckEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder.EstablishmentRejectEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder.NegotiationRejectEncoder;
-import org.fixtrading.silverflash.fixp.messages.MessageEncoder.NegotiationResponseEncoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderDecoder;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.NegotiateDecoder;
+import org.fixtrading.silverflash.fixp.messages.NegotiationRejectCode;
+import org.fixtrading.silverflash.fixp.messages.NegotiationRejectEncoder;
+import org.fixtrading.silverflash.fixp.messages.NegotiationResponseEncoder;
+import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.reactor.EventReactor;
 import org.fixtrading.silverflash.reactor.Topic;
 import org.fixtrading.silverflash.transport.Transport;
@@ -64,59 +65,75 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
   public static final int DEFAULT_OUTBOUND_KEEPALIVE_INTERVAL = 5000;
 
   private final AuthenticationClient authenticationClient;
+  private final EstablishDecoder establishDecoder = new EstablishDecoder();
+  private final EstablishmentAckEncoder establishmentAckEncoder = new EstablishmentAckEncoder();
+  private final EstablishmentRejectEncoder establishmentRejectEncoder = new EstablishmentRejectEncoder();
+  private final DirectBuffer immutableBuffer = new UnsafeBuffer(new byte[0]);
   private FlowType inboundFlow;
-  private int inboundKeepaliveInterval;
-  private final MessageDecoder messageDecoder = new MessageDecoder();
-  private final MessageEncoder messageEncoder;
+  private long inboundKeepaliveInterval;
+  private final MessageHeaderDecoder messageHeaderDecoder = new MessageHeaderDecoder();
+  private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
+  private final NegotiateDecoder negotiateDecoder = new NegotiateDecoder();
+  private final NegotiationRejectEncoder negotiationRejectEncoder = new NegotiationRejectEncoder();
+  private final NegotiationResponseEncoder negotiationResponseEncoder = new NegotiationResponseEncoder();
   private final FlowType outboundFlow;
   private int outboundKeepaliveInterval = DEFAULT_OUTBOUND_KEEPALIVE_INTERVAL;
   private final EventReactor<ByteBuffer> reactor;
   private long requestTimestamp;
-  private UUID sessionId;
-  private final ByteBuffer sessionMessageBuffer = ByteBuffer.allocateDirect(128).order(
+  private final ByteBuffer sendBuffer = ByteBuffer.allocateDirect(128).order(
       ByteOrder.nativeOrder());
+  private UUID sessionId;
   private Topic terminatedTopic;
   private final Transport transport;
   private final byte[] uuidAsBytes = new byte[16];
+  private final MutableDirectBuffer mutableBuffer = new UnsafeBuffer(sendBuffer);
+  private final MessageFrameEncoder frameEncoder;
 
+  
   /**
    * Constructor
    * 
    * @param reactor an EventReactor
    * @param transport used to exchange messages with the client
    * @param outboundFlow client flow type
-   * @param messageEncoder FIXP message encoder
    */
-  public ServerSessionEstablisher(EventReactor<ByteBuffer> reactor, Transport transport,
-      FlowType outboundFlow, MessageEncoder messageEncoder) {
+  public ServerSessionEstablisher(MessageFrameEncoder frameEncoder, EventReactor<ByteBuffer> reactor, Transport transport,
+      FlowType outboundFlow) {
     Objects.requireNonNull(transport);
+    this.frameEncoder = frameEncoder;
     this.reactor = reactor;
     this.transport = transport;
     this.outboundFlow = outboundFlow;
     this.authenticationClient = new AuthenticationClient(reactor);
-    this.messageEncoder = messageEncoder;
   }
 
   @Override
   public void accept(ByteBuffer buffer) {
     try {
-      Optional<Decoder> optDecoder = messageDecoder.wrap(buffer, buffer.position());
-      if (optDecoder.isPresent()) {
-        final Decoder decoder = optDecoder.get();
-        switch (decoder.getMessageType()) {
-        case NEGOTIATE:
-          onNegotiate((NegotiateDecoder) decoder);
+      immutableBuffer.wrap(buffer);
+      int offset = buffer.position();
+      messageHeaderDecoder.wrap(immutableBuffer, offset);
+      offset += messageHeaderDecoder.encodedLength();
+
+      if (messageHeaderDecoder.schemaId() == negotiateDecoder.sbeSchemaId()) {
+
+        switch (messageHeaderDecoder.templateId()) {
+        case NegotiateDecoder.TEMPLATE_ID:
+          negotiateDecoder.wrap(immutableBuffer, offset,
+              negotiateDecoder.sbeBlockLength(), negotiateDecoder.sbeSchemaVersion());
+          onNegotiate(negotiateDecoder, buffer);
           break;
-        case ESTABLISH:
-          onEstablish((EstablishDecoder) decoder);
+        case EstablishDecoder.TEMPLATE_ID:
+          establishDecoder.wrap(immutableBuffer, offset,
+              establishDecoder.sbeBlockLength(), establishDecoder.sbeSchemaVersion());
+          onEstablish(establishDecoder, buffer);
           break;
         default:
 //          System.out
 //              .println("ServerSessionEstablisher: Protocol violation; unexpected session message "
 //                  + decoder.getMessageType());
           if (terminatedTopic != null) {
-            buffer.reset();
-            reactor.post(terminatedTopic, buffer);
+             reactor.post(terminatedTopic, buffer);
           }
         }
       } else {
@@ -150,10 +167,18 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
    */
   public void authenticationFailed(UUID sessionId) {
     try {
-      negotiationReject(requestTimestamp, NegotiationReject.CREDENTIALS);
+      negotiationReject(requestTimestamp, NegotiationRejectCode.Credentials);
     } catch (IOException e) {
       reactor.post(terminatedTopic, null);
     }
+  }
+
+  /* (non-Javadoc)
+   * @see org.fixtrading.silverflash.fixp.Establisher#complete()
+   */
+  @Override
+  public void complete() throws IOException {
+      establishmentAck(requestTimestamp, outboundKeepaliveInterval);
   }
 
   @Override
@@ -169,39 +194,62 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
   }
 
   void establishmentAck(long requestTimestamp, int keepaliveInterval) throws IOException {
-    sessionMessageBuffer.clear();
-    EstablishmentAckEncoder establishEncoder =
-        (EstablishmentAckEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
-            MessageType.ESTABLISHMENT_ACK);
-    establishEncoder.setTimestamp(requestTimestamp);
-    establishEncoder.setSessionId(uuidAsBytes);
-    establishEncoder.setKeepaliveInterval(keepaliveInterval);
+    sendBuffer.clear();
+    int offset = 0;
+    frameEncoder.wrap(sendBuffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(establishmentAckEncoder.sbeBlockLength())
+        .templateId(establishmentAckEncoder.sbeTemplateId()).schemaId(establishmentAckEncoder.sbeSchemaId())
+        .version(establishmentAckEncoder.sbeSchemaVersion());
+    offset += messageHeaderEncoder.encodedLength();
+    establishmentAckEncoder.wrap(mutableBuffer, offset);
+
+    establishmentAckEncoder.requestTimestamp(requestTimestamp);
+    for (int i = 0; i < 16; i++) {
+      establishmentAckEncoder.sessionId(i, uuidAsBytes[i]);
+    }
+    establishmentAckEncoder.keepaliveInterval(keepaliveInterval);
     // todo: retrieve persisted seqNo for recoverable flow
-    establishEncoder.setNextSeqNoNull();
-    send(sessionMessageBuffer);
+    establishmentAckEncoder.nextSeqNo(EstablishmentAckEncoder.nextSeqNoNullValue());
+    frameEncoder.setMessageLength(offset + establishmentAckEncoder.encodedLength());
+    frameEncoder.encodeFrameTrailer();
+    
+    send(sendBuffer);
     // System.out.println("Establishment ack sent");
   }
 
-  void establishmentReject(long requestTimestamp, EstablishmentReject rejectCode)
+  void establishmentReject(long requestTimestamp, EstablishmentRejectCode rejectCode)
       throws IOException {
-    EstablishmentRejectEncoder establishEncoder =
-        (EstablishmentRejectEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
-            MessageType.ESTABLISHMENT_REJECT);
-    establishEncoder.setTimestamp(requestTimestamp);
-    establishEncoder.setSessionId(uuidAsBytes);
-    establishEncoder.setCode(rejectCode);
-    establishEncoder.setReasonNull();
-    send(sessionMessageBuffer);
+    int offset = 0;
+    frameEncoder.wrap(sendBuffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(establishmentRejectEncoder.sbeBlockLength())
+        .templateId(establishmentRejectEncoder.sbeTemplateId()).schemaId(establishmentRejectEncoder.sbeSchemaId())
+        .version(establishmentRejectEncoder.sbeSchemaVersion());
+    offset += messageHeaderEncoder.encodedLength();
+    establishmentRejectEncoder.wrap(mutableBuffer, offset);
 
-    sessionMessageBuffer.rewind();
-    reactor.post(terminatedTopic, sessionMessageBuffer);
+    establishmentRejectEncoder.requestTimestamp(requestTimestamp);
+    for (int i = 0; i < 16; i++) {
+      establishmentRejectEncoder.sessionId(i, uuidAsBytes[i]);
+    }
+    establishmentRejectEncoder.code(rejectCode);
+    //establishmentRejectEncoder.reason();
+    frameEncoder.setMessageLength(offset + establishmentRejectEncoder.encodedLength());
+    frameEncoder.encodeFrameTrailer();
+    send(sendBuffer);
+
+    sendBuffer.rewind();
+    reactor.post(terminatedTopic, sendBuffer);
   }
 
   public FlowType getInboundFlow() {
     return inboundFlow;
   }
 
-  public int getInboundKeepaliveInterval() {
+  public long getInboundKeepaliveInterval() {
     return inboundKeepaliveInterval;
   }
 
@@ -214,7 +262,7 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
    * 
    * @see org.fixtrading.silverflash.Establisher#getOutboundKeepaliveInterval()
    */
-  public int getOutboundKeepaliveInterval() {
+  public long getOutboundKeepaliveInterval() {
     return outboundKeepaliveInterval;
   }
 
@@ -227,72 +275,88 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
     return false;
   }
 
-  void negotiationReject(long requestTimestamp, NegotiationReject rejectCode) throws IOException {
-    NegotiationRejectEncoder negotiateEncoder =
-        (NegotiationRejectEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
-            MessageType.NEGOTIATION_REJECT);
-    negotiateEncoder.setRequestTimestamp(requestTimestamp);
-    negotiateEncoder.setSessionId(uuidAsBytes);
-    negotiateEncoder.setCode(rejectCode);
+  void negotiationReject(long requestTimestamp, NegotiationRejectCode rejectCode) throws IOException {
+    int offset = 0;
+    frameEncoder.wrap(sendBuffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(negotiationRejectEncoder.sbeBlockLength())
+        .templateId(negotiationRejectEncoder.sbeTemplateId()).schemaId(negotiationRejectEncoder.sbeSchemaId())
+        .version(negotiationRejectEncoder.sbeSchemaVersion());
+    offset += messageHeaderEncoder.encodedLength();
+    negotiationRejectEncoder.wrap(mutableBuffer, offset);
+    negotiationRejectEncoder.requestTimestamp(requestTimestamp);
+    for (int i = 0; i < 16; i++) {
+      negotiationRejectEncoder.sessionId(i, uuidAsBytes[i]);
+    }
+    negotiationRejectEncoder.code(rejectCode);
     // Maybe add reason text
-    negotiateEncoder.setReasonNull();
-    send(sessionMessageBuffer);
+    // negotiationRejectEncoder.reason();
+    frameEncoder.setMessageLength(offset + negotiationRejectEncoder.encodedLength());
+    frameEncoder.encodeFrameTrailer();
+    send(sendBuffer);
 
-    sessionMessageBuffer.rewind();
-    reactor.post(terminatedTopic, sessionMessageBuffer);
+    sendBuffer.rewind();
+    reactor.post(terminatedTopic, sendBuffer);
   }
 
   void negotiationResponse(long requestTimestamp, FlowType serverFlow) throws IOException {
-    NegotiationResponseEncoder negotiateEncoder =
-        (NegotiationResponseEncoder) messageEncoder.wrap(sessionMessageBuffer, 0,
-            MessageType.NEGOTIATION_RESPONSE);
-    negotiateEncoder.setRequestTimestamp(requestTimestamp);
-    negotiateEncoder.setSessionId(uuidAsBytes);
-    negotiateEncoder.setServerFlow(serverFlow);
-    send(sessionMessageBuffer);
+    int offset = 0;
+    frameEncoder.wrap(sendBuffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(negotiationResponseEncoder.sbeBlockLength())
+        .templateId(negotiationResponseEncoder.sbeTemplateId()).schemaId(negotiationResponseEncoder.sbeSchemaId())
+        .version(negotiationResponseEncoder.sbeSchemaVersion());
+    offset += messageHeaderEncoder.encodedLength();
+    negotiationResponseEncoder.wrap(mutableBuffer, offset);
+    negotiationResponseEncoder.requestTimestamp(requestTimestamp);
+    for (int i = 0; i < 16; i++) {
+      negotiationResponseEncoder.sessionId(i, uuidAsBytes[i]);
+    }
+    negotiationResponseEncoder.serverFlow(serverFlow);
+    frameEncoder.setMessageLength(offset + negotiationResponseEncoder.encodedLength());
+    frameEncoder.encodeFrameTrailer();
+    send(sendBuffer);
 
-    // Since subscription occurred before sessionId was available, use transport hashCode
+     // Since subscription occurred before sessionId was available, use transport hashCode
     // as unique identifier.
     Topic initTopic = SessionEventTopics.getTopic(SERVER_NEGOTIATED, transport.hashCode());
-    reactor.post(initTopic, sessionMessageBuffer);
+    reactor.post(initTopic, sendBuffer);
 
-    publishNewSession(sessionMessageBuffer.duplicate());
+    publishNewSession(sendBuffer.duplicate());
     // System.out.println("Negotiation response sent");
   }
 
-  void onEstablish(EstablishDecoder establishDecoder) throws IOException {
-    long requestTimestamp = establishDecoder.getRequestTimestamp();
+  void onEstablish(EstablishDecoder establishDecoder, ByteBuffer buffer) throws IOException {
     byte[] id = new byte[16];
-    establishDecoder.getSessionId(id, 0);
+    for (int i = 0; i < 16; i++) {
+      id[i] = (byte) establishDecoder.sessionId(i);
+    }
     // Assuming that authentication is only done in Negotiate; may change
     if (Arrays.equals(uuidAsBytes, id)) {
-      this.requestTimestamp = establishDecoder.getRequestTimestamp();
-      inboundKeepaliveInterval = establishDecoder.getKeepaliveInterval();
-      long inboundNextSeqNo = establishDecoder.getNextSeqNo();
+      this.requestTimestamp = establishDecoder.timestamp();
+      inboundKeepaliveInterval = establishDecoder.keepaliveInterval();
+      long inboundNextSeqNo = establishDecoder.nextSeqNo();
 
       Topic readyTopic = SessionEventTopics.getTopic(sessionId, SERVER_ESTABLISHED);
-      reactor.post(readyTopic, sessionMessageBuffer);
+      reactor.post(readyTopic, sendBuffer);
     } else {
       // System.out.println("Unexpected establish received");
-      ByteBuffer buffer = establishDecoder.getBuffer();
-      buffer.reset();
       reactor.post(terminatedTopic, buffer);
-
     }
   }
 
-  void onNegotiate(NegotiateDecoder negotiateDecoder) {
-    final ByteBuffer buffer = negotiateDecoder.getBuffer();
+  void onNegotiate(NegotiateDecoder negotiateDecoder, ByteBuffer buffer) {
     int pos = buffer.position();
     
-    requestTimestamp = negotiateDecoder.getTimestamp();
-    negotiateDecoder.getSessionId(this.uuidAsBytes, 0);
+    requestTimestamp = negotiateDecoder.timestamp();
+    for (int i = 0; i < 16; i++) {
+      uuidAsBytes[i] = (byte) negotiateDecoder.sessionId(i);
+    }
     this.sessionId = SessionId.UUIDFromBytes(uuidAsBytes);
 
-    inboundFlow = negotiateDecoder.getClientFlow();
-
-    byte[] credentials = new byte[128];
-    negotiateDecoder.getCredentials(credentials, 0);
+    inboundFlow = negotiateDecoder.clientFlow();
 
     terminatedTopic = SessionEventTopics.getTopic(sessionId, SESSION_SUSPENDED);
 
@@ -331,13 +395,5 @@ public class ServerSessionEstablisher implements Sender, Establisher, FlowReceiv
   public ServerSessionEstablisher withOutboundKeepaliveInterval(int outboundKeepaliveInterval) {
     this.outboundKeepaliveInterval = outboundKeepaliveInterval;
     return this;
-  }
-
-  /* (non-Javadoc)
-   * @see org.fixtrading.silverflash.fixp.Establisher#complete()
-   */
-  @Override
-  public void complete() throws IOException {
-      establishmentAck(requestTimestamp, outboundKeepaliveInterval);
   }
 }

@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,9 +25,12 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.fixtrading.silverflash.Receiver;
 import org.fixtrading.silverflash.fixp.SessionEventTopics;
-import org.fixtrading.silverflash.fixp.messages.MessageType;
+import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
+import org.fixtrading.silverflash.fixp.messages.UnsequencedHeartbeatEncoder;
 import org.fixtrading.silverflash.reactor.Subscription;
 import org.fixtrading.silverflash.reactor.TimerSchedule;
 import org.fixtrading.silverflash.reactor.Topic;
@@ -54,8 +57,6 @@ public class NoneFlowSender extends AbstractFlow implements FlowSender {
     return new Builder();
   }
 
-  private final ByteBuffer heartbeatBuffer = ByteBuffer.allocateDirect(16).order(
-      ByteOrder.nativeOrder());
   private final Receiver heartbeatEvent = buffer -> {
     try {
       sendHeartbeat();
@@ -64,21 +65,36 @@ public class NoneFlowSender extends AbstractFlow implements FlowSender {
       reactor.post(terminatedTopic, buffer);
     }
   };
-
+  
   private final TimerSchedule heartbeatSchedule;
   private final Subscription heartbeatSubscription;
   private final AtomicBoolean isHeartbeatDue = new AtomicBoolean(true);
-
+  private final MessageHeaderEncoder messageHeaderEncoder = new MessageHeaderEncoder();
+  private final ByteBuffer sendBuffer = ByteBuffer.allocateDirect(16).order(
+      ByteOrder.nativeOrder());
+  private final UnsequencedHeartbeatEncoder unsequencedHeartbeatEncoder = new UnsequencedHeartbeatEncoder();
+  private final MutableDirectBuffer mutableBuffer = new UnsafeBuffer(sendBuffer);
+  
   protected NoneFlowSender(Builder builder) {
     super(builder);
+    int offset = 0;
+    frameEncoder.wrap(sendBuffer, offset).encodeFrameHeader();
+    offset += frameEncoder.getHeaderLength();
+    messageHeaderEncoder.wrap(mutableBuffer, offset);
+    messageHeaderEncoder.blockLength(unsequencedHeartbeatEncoder.sbeBlockLength())
+        .templateId(unsequencedHeartbeatEncoder.sbeTemplateId()).schemaId(unsequencedHeartbeatEncoder.sbeSchemaId())
+        .version(unsequencedHeartbeatEncoder.sbeSchemaVersion());
+    offset += messageHeaderEncoder.encodedLength();
+    unsequencedHeartbeatEncoder.wrap(mutableBuffer, offset);
+    frameEncoder.setMessageLength(offset + unsequencedHeartbeatEncoder.encodedLength());
+    frameEncoder.encodeFrameTrailer();
 
-    messageEncoder.wrap(heartbeatBuffer, 0, MessageType.UNSEQUENCED_HEARTBEAT);
-
+ 
     if (keepaliveInterval != 0) {
       final Topic heartbeatTopic = SessionEventTopics.getTopic(sessionId, HEARTBEAT);
       heartbeatSubscription = reactor.subscribe(heartbeatTopic, heartbeatEvent);
       heartbeatSchedule =
-          reactor.postAtInterval(heartbeatTopic, heartbeatBuffer, keepaliveInterval);
+          reactor.postAtInterval(heartbeatTopic, sendBuffer, keepaliveInterval);
     } else {
       // No outbound heartbeats if multicast
       heartbeatSubscription = null;
@@ -111,7 +127,7 @@ public class NoneFlowSender extends AbstractFlow implements FlowSender {
    */
   public void sendHeartbeat() throws IOException {
     if (isHeartbeatDue.getAndSet(true)) {
-      transport.write(heartbeatBuffer);
+      transport.write(sendBuffer);
     }
   }
 

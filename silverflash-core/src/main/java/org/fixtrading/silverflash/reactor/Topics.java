@@ -1,5 +1,5 @@
 /**
- *    Copyright 2015 FIX Protocol Ltd
+ *    Copyright 2015-2016 FIX Protocol Ltd
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -170,4 +170,14 @@ public final class Topics {
     return TopicImpl.parse(s);
   }
 
+  /**
+   * Returns a String equivalent of a Topic
+   * @param topic any implementation of a Topic
+   * @return serialized as a String
+   */
+  public static String toString(Topic topic) {
+    String[] fields = topic.getFields();
+    Topic topicImpl = Topics.getTopic(fields);
+    return topicImpl.toString();
+  }
 }

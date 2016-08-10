@@ -8,8 +8,14 @@
 	</parent>
 	<artifactId>silverflash-core</artifactId>
 	<name>${project.groupId}:${project.artifactId}</name>
+	<description>Engine implementation using FIXP session protocol </description>
 
 	<dependencies>
+		<dependency>
+			<groupId>uk.co.real-logic</groupId>
+			<artifactId>sbe-tool</artifactId>
+			<version>${sbe.version}</version>
+		</dependency>
 		<dependency>
 			<groupId>com.lmax</groupId>
 			<artifactId>disruptor</artifactId>
@@ -38,5 +44,88 @@
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
-	<description>Engine implementation using FIXP session protocol </description>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>1.5.0</version>
+				<executions>
+					<execution>
+						<id>generate-sbe</id>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>java</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<mainClass>uk.co.real_logic.sbe.SbeTool</mainClass>
+					<classpathScope>compile</classpathScope>
+					<commandlineArgs>${project.build.resources[0].directory}/SBEschemaForFIXP.xml</commandlineArgs>
+					<systemProperties>
+						<systemProperty>
+							<key>sbe.output.dir</key>
+							<value>${project.build.directory}/generated-sources/java</value>
+						</systemProperty>
+						<systemProperty>
+							<key>sbe.target.namespace</key>
+							<value>org.fixtrading.silverflash.fixp.messages</value>
+						</systemProperty>
+					</systemProperties>
+					<workingDirectory>${project.build.directory}/generated-sources/java</workingDirectory>
+				</configuration>
+			</plugin>
+						<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>1.5.0</version>
+				<executions>
+					<execution>
+						<id>generate-sbe2</id>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>java</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<mainClass>uk.co.real_logic.sbe.SbeTool</mainClass>
+					<classpathScope>compile</classpathScope>
+					<commandlineArgs>${project.build.resources[0].directory}/SBEschema2.xml</commandlineArgs>
+					<systemProperties>
+						<systemProperty>
+							<key>sbe.output.dir</key>
+							<value>${project.build.directory}/generated-sources/java</value>
+						</systemProperty>
+						<systemProperty>
+							<key>sbe.target.namespace</key>
+							<value>org.fixtrading.silverflash.fixp.messages</value>
+						</systemProperty>
+					</systemProperties>
+					<workingDirectory>${project.build.directory}/generated-sources/java</workingDirectory>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>build-helper-maven-plugin</artifactId>
+				<version>1.11</version>
+				<executions>
+					<execution>
+						<id>add-source</id>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>add-source</goal>
+						</goals>
+						<configuration>
+							<sources>
+								<source>${project.build.directory}/generated-sources/java/</source>
+							</sources>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
 </project>
