@@ -52,6 +52,7 @@ import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
 import org.fixtrading.silverflash.fixp.messages.NotAppliedDecoder;
 import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
+import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
 import org.fixtrading.silverflash.transport.Dispatcher;
 import org.fixtrading.silverflash.transport.SharedMemoryTransport;
 import org.fixtrading.silverflash.transport.TcpConnectorTransport;
@@ -514,6 +515,7 @@ public class BuySide implements Runnable {
     if (sharedTransport == null) {
       sharedTransport = FixpSharedTransportAdaptor.builder().withReactor(engine.getReactor())
           .withTransport(createRawTransport(0))
+          .withMessageFramer(new MessageLengthFrameSpliterator())
           .withBufferSupplier(new SingleBufferSupplier(
               ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder()))).build();
     }

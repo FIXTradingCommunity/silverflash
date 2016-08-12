@@ -56,6 +56,7 @@ import org.fixtrading.silverflash.fixp.messages.MessageHeaderEncoder;
 import org.fixtrading.silverflash.fixp.messages.NotAppliedDecoder;
 import org.fixtrading.silverflash.frame.MessageFrameEncoder;
 import org.fixtrading.silverflash.frame.MessageLengthFrameEncoder;
+import org.fixtrading.silverflash.frame.MessageLengthFrameSpliterator;
 import org.fixtrading.silverflash.transport.Dispatcher;
 import org.fixtrading.silverflash.transport.IdentifiableTransportConsumer;
 import org.fixtrading.silverflash.transport.SharedMemoryTransport;
@@ -405,6 +406,7 @@ public class SellSide {
           .withTransport(createRawTransport(0)).withMessageConsumerSupplier(consumerSupplier)
           .withBufferSupplier(new SingleBufferSupplier(
               ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
+          .withMessageFramer(new MessageLengthFrameSpliterator())
           .build();
 
       sharedTransport.openUnderlyingTransport();
@@ -418,6 +420,7 @@ public class SellSide {
           .withTransport(rawTransport).withMessageConsumerSupplier(consumerSupplier)
           .withBufferSupplier(new SingleBufferSupplier(
               ByteBuffer.allocate(16 * 1024).order(ByteOrder.nativeOrder())))
+          .withMessageFramer(new MessageLengthFrameSpliterator())
           .build();
 
       sharedTransport.openUnderlyingTransport();
