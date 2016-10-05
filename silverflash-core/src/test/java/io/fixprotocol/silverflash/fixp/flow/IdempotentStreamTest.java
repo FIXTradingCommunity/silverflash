@@ -194,7 +194,7 @@ public class IdempotentStreamTest {
     };
     clientTransport.open(
         new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),
-        callbackReceiver);
+        callbackReceiver).get();
     UUID uuid = SessionId.generateUUID();
     final SimplexSequencer sequencer = new SimplexSequencer(frameEncoder);
 
@@ -214,7 +214,7 @@ public class IdempotentStreamTest {
     sender.send(buf);
 
     try {
-      Thread.sleep(500);
+      Thread.sleep(3000);
     } catch (InterruptedException e) {
 
     }

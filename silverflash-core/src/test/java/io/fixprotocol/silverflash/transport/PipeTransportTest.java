@@ -126,7 +126,7 @@ public class PipeTransportTest {
 
     clientTransport.open(
         new SingleBufferSupplier(ByteBuffer.allocate(8096).order(ByteOrder.nativeOrder())),
-        clientReceiver);
+        clientReceiver).get();
 
     assertTrue(serverReceiver.isConnected());
 
