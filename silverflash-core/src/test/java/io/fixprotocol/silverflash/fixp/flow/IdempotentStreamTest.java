@@ -32,6 +32,7 @@ import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import io.fixprotocol.silverflash.MessageConsumer;
@@ -53,6 +54,7 @@ import io.fixprotocol.silverflash.transport.PipeTransport;
 import io.fixprotocol.silverflash.transport.Transport;
 import io.fixprotocol.silverflash.transport.TransportConsumer;
 
+@Ignore
 public class IdempotentStreamTest {
 
   class TestReceiver implements MessageConsumer<UUID> {

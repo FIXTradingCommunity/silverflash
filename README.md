@@ -38,10 +38,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ## Prerequisites
-This project requires Java 8. It should run on any platform for which the JVM is supported.
+This project requires Java 8 or later. It should run on any platform for which the JVM is supported.
 
 This project is intended to otherwise require minimal dependencies.
 
 ## Build
-The project is built with Maven. For developer details, see the project wiki.
+The project is built with Maven 3.0 or later and has been deployed to public Maven repositories.
+
+The core module may be included as a dependency in an application Maven project
+as follows:
+
+```xml
+<dependency>
+    <groupId>io.fixprotocol.silverflash</groupId>
+    <artifactId>silverflash-core</artifactId>
+    <version>1.1.1</version>
+</dependency>
+```
+
 
